@@ -295,11 +295,8 @@ port_mios_version_incremental=$(< build/portrom/images/mi_ext/etc/build.prop gre
 
 port_device_code=$(echo $port_mios_version_incremental | cut -d "." -f 5)
 
-if [[ $port_android_version == "14" ]];then
-    base_device_code=U$(echo $base_rom_version | cut -d "." -f 5 | cut -c 2-)
-elif [[ $port_android_version == "15" ]];then
-    base_device_code=V$(echo $base_rom_version | cut -d "." -f 5 | cut -c 2-)
-fi
+base_device_code=$(echo $base_rom_version | cut -d "." -f 5)
+
 if [[ $port_mios_version_incremental == *DEV* ]];then
     yellow "检测到开发板，跳过修改版本代码" "Dev deteced,skip replacing codename"
     port_rom_version="$(echo $port_mios_version_incremental)"
@@ -363,6 +360,13 @@ portSettingsRroDeviceHideStatusBarOverlay=$(find build/portrom/images/product -t
 if [ -f "${baseSettingsRroDeviceHideStatusBarOverlay}" ] && [ -f "${portSettingsRroDeviceHideStatusBarOverlay}" ];then
     blue "正在替换 [SettingsRroDeviceHideStatusBarOverlay.apk]" "Replacing [SettingsRroDeviceHideStatusBarOverlay.apk]"
     cp -rf ${baseSettingsRroDeviceHideStatusBarOverlay} ${portSettingsRroDeviceHideStatusBarOverlay}
+fi
+
+baseSettingsRroDeviceTypeOverlay=$(find build/baserom/images/product -type f -name "SettingsRroDeviceTypeOverlay.apk")
+portSettingsRroDeviceTypeOverlay=$(find build/portrom/images/product -type f -name "SettingsRroDeviceTypeOverlay.apk")
+if [ -f "${baseSettingsRroDeviceTypeOverlay}" ] && [ -f "${portSettingsRroDeviceTypeOverlay}" ];then
+    blue "正在替换 [SettingsRroDeviceTypeOverlay.apk]" "Replacing [SettingsRroDeviceTypeOverlay.apk]"
+    cp -rf ${baseSettingsRroDeviceTypeOverlay} ${portSettingsRroDeviceTypeOverlay}
 fi
 
 baseMiuiBiometricResOverlay=$(find build/baserom/images/product -type f -name "MiuiBiometricResOverlay.apk")
@@ -622,7 +626,7 @@ if [[ ${is_eu_rom} == true ]];then
 else
     yellow "删除多余的App" "Debloating..." 
     # List of apps to be removed
-    debloat_apps=("MSA" "mab" "Updater" "MiuiUpdater" "MiService" "MIService" "SoterService" "Hybrid" "AnalyticsCore")
+    debloat_apps=("MSA" "mab" "Updater" "MiuiUpdater" "MiService" "MIService" "SoterService" "Hybrid" "AnalyticsCore" "VoiceTrigger" "VoiceAssist" "UPTsmService" "Sogou" "PaymentService" "MiGame" "MIUIgreenguard" "MIUISuperMarket" "MIUISecurityInputMethod" "MIUIAiasstService" "CarWith" "AiAsstVision" "CatchLog" "MiuiExtraPhoto" "MiGameCenterSDKService" "MIUIYellowPage" "MIUIQuickSearchBox" "MIUIBrowser" "iflytek" "SmartHome" "MiuiScanner" "MiShop" "MiRadio" "MiMediaEditor" "MIpay" "MIUIYoupin" "MIUIXiaoAiSpeechEngine" "MIUIVirtualSim" "MIUIVipAccount" "OS2VipAccount" "MIUIVideo" "MIUINotes" "MIUINewHome" "MIUIMusicT" "MIUIMiDrive" "MIUIHuanji" "MIUIGameCenter" "MIUIEmail" "MIUIDuokanReader" "MIUICompass" "MIGalleryLockscreen" "Health" "BaiduIME" "BasicDreams" "YouTube" "YTMusic" "Videos" "PlayAutoInstallStubApp" "Photos" "Meet" "Maps" "MSA-Global" "MIUISystemAppUpdater" "Gmail2" "Drive" "Chrome64" "Wellbeing" "HotwordEnrollment" "Velvet" "Turbo" "PersonalSafety" "MIUIMusicGlobal" "MIServiceGlobal" "FamilyLinkParentalControls" "ExtraPhotoGlobal" "MiGalleryLockScreenGlobal" "POCOCOMMUNITY_OVERSEA" "MIUICompassGlobal" "MIDrop" "PaymentService_Global" "MIUIMiPicks" "GoogleOne_arm64" "GameCenterGlobal" "SearchSelector" "MIUIYellowPageGlobal" "MIUIGlobalMinusScreenWidget" "HealthConnectStub" "OrangeManualSelector" "bygIgnite" "AppBox" "com.dti.telefonica" "com.altice.android.myapps" "com.sfr.android.sfrjeux" "GoogleAssistant" "MIBrowserGlobal_builtin_before_2021" "GoogleNews_xxhdpi" "MIUIHuanjiGlobal" "Podcasts" "MICOMMUNITY_OVERSEA" "XMRemoteController" "Opera" "MiCare" "MISTORE_OVERSEA" "MiBugReportOS2" "HybridPlatform")
 
     for debloat_app in "${debloat_apps[@]}"; do
         # Find the app directory
@@ -657,6 +661,32 @@ fi
 # build.prop 修改
 blue "正在修改 build.prop" "Modifying build.prop"
 #
+sed -i "s/ro.control_privapp_permissions=.*/ro.control_privapp_permissions=disable/g" build/portrom/images/vendor/build.prop || true
+sed -i "/persist.sys.enhance_vkpipelinecache.enable=/d" build/portrom/images/product/etc/build.prop || true
+sed -i "/tango.*/d" build/portrom/images/system/system/build.prop || true
+echo "persist.sys.computility.cpulevel=6" >> build/portrom/images/product/etc/build.prop
+echo "persist.sys.computility.gpulevel=6" >> build/portrom/images/product/etc/build.prop
+echo "persist.sys.computility.version=2025" >> build/portrom/images/product/etc/build.prop
+sed -i "s/ro.miui.support.system.app.uninstall.v2=true/#ro.miui.support.system.app.uninstall.v2=true/g" build/portrom/images/mi_ext/etc/build.prop || true
+echo "ro.crypto.state=encrypted" >> build/portrom/images/vendor/build.prop
+echo "persist.sys.usap_pool_enabled=false" >> build/portrom/images/product/etc/build.prop
+echo "persist.sys.dynamic_usap_enabled=false" >> build/portrom/images/product/etc/build.prop
+echo "debug.sf.enable_transaction_tracing=false" >> build/portrom/images/product/etc/build.prop
+echo "ro.odm.mm.vibrator.audio_haptic_support=true" >> build/portrom/images/vendor/build.prop
+echo "sys.haptic.media=true" >> build/portrom/images/vendor/build.prop
+echo "sys.haptic.lowPowerMode=true" >> build/portrom/images/vendor/build.prop
+echo "sys.haptic.onetrack=true" >> build/portrom/images/vendor/build.prop
+echo "persist.sys.screen_anti_burn_enabled=true" >> build/portrom/images/product/etc/build.prop
+echo "persist.sys.support_ultra_hdr=true" >> build/portrom/images/product/etc/build.prop
+
+for prop in persist.sys.dexpreload.cpu_cores persist.sys.dexpreload.big_prime_cores persist.sys.dexpreload.other_cores persist.sys.miui_animator_sched.bigcores persist.sys.miui_animator_sched.big_prime_cores persist.sys.miui_animator_sched.sched_threads persist.vendor.display.miui.composer_boost ro.miui.affinity.sfui ro.miui.affinity.sfre ro.miui.affinity.sfuireset ro.miui.affinity.gameisforground dalvik.vm.default-dex2oat-cpu-set dalvik.vm.boot-dex2oat-cpu-set dalvik.vm.background-dex2oat-cpu-set persist.sys.minfree_def persist.sys.minfree_6g persist.sys.minfree_8g; do
+    val=$(grep "^$prop=" build/baserom/images/product/etc/build.prop 2>/dev/null | cut -d '=' -f 2-)
+    if [ -n "$val" ]; then
+        sed -i "/^$prop=/d" build/portrom/images/product/etc/build.prop
+        echo "$prop=$val" >> build/portrom/images/product/etc/build.prop
+    fi
+done
+
 #change the locale to English
 export LC_ALL=en_US.UTF-8
 buildDate=$(date -u +"%a %b %d %H:%M:%S UTC %Y")
