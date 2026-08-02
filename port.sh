@@ -91,7 +91,7 @@ blue "正在检测ROM底包" "Validating BASEROM.."
 if unzip -l ${baserom} | grep -q "payload.bin"; then
     baserom_type="payload"
     green "检测到payload.bin文件" "Found payload.bin file"
-    super_list="vendor mi_ext odm system product system_ext"
+    super_list="vendor odm system product system_ext"
 elif unzip -l ${baserom} | grep -q "br$";then
     baserom_type="br"
     green "检测到broli文件" "Found broli file"
@@ -252,9 +252,9 @@ done
 
 # Extract the partitions list that need to pack into the super.img
 super_list=$(sed '/^#/d;/^\//d;/overlay/d;/^$/d' build/portrom/images/vendor/etc/fstab.qcom 2>/dev/null \
-                | awk '{ print $1}' | sort | uniq | grep -v "_dlkm")
+                | awk '{ print $1}' | sort | uniq | grep -vE "(_dlkm|mi_ext)")
 if [ -z "$super_list" ]; then
-    super_list="vendor mi_ext odm system product system_ext"
+    super_list="vendor odm system product system_ext"
 fi
 
 # 分解镜像
@@ -280,6 +280,15 @@ for part in ${super_list};do
 done
 rm -rf config
 
+blue "合并 mi_ext 到其他分区" "Merging mi_ext to other partitions"
+if [ -d "build/portrom/images/mi_ext" ]; then
+    cp -rf build/portrom/images/mi_ext/product/* build/portrom/images/product/ 2>/dev/null || true
+    cp -rf build/portrom/images/mi_ext/system/* build/portrom/images/system/system/ 2>/dev/null || true
+    cp -rf build/portrom/images/mi_ext/system_ext/* build/portrom/images/system_ext/ 2>/dev/null || true
+    cat build/portrom/images/mi_ext/etc/build.prop >> build/portrom/images/product/etc/build.prop 2>/dev/null || true
+    rm -rf build/portrom/images/mi_ext
+fi
+
 blue "正在获取ROM参数" "Fetching ROM build prop."
 
 # 安卓版本
@@ -296,7 +305,7 @@ green "SDK 版本: 底包为 [SDK ${base_android_sdk}], 移植包为 [SDK ${port
 base_rom_version=$(< build/portrom/images/vendor/build.prop grep "ro.vendor.build.version.incremental" |awk 'NR==1' |cut -d '=' -f 2)
 
 #HyperOS版本号获取
-port_mios_version_incremental=$(< build/portrom/images/mi_ext/etc/build.prop grep "ro.mi.os.version.incremental" | awk 'NR==1' | cut -d '=' -f 2)
+port_mios_version_incremental=$(< build/portrom/images/product/etc/build.prop grep "ro.mi.os.version.incremental" | awk 'NR==1' | cut -d '=' -f 2)
 #替换机型代号,比如小米10：UNBCNXM -> UJBCNXM
 
 port_device_code=$(echo $port_mios_version_incremental | cut -d "." -f 5)
@@ -673,7 +682,7 @@ sed -i "/tango.*/d" build/portrom/images/system/system/build.prop || true
 echo "persist.sys.computility.cpulevel=6" >> build/portrom/images/product/etc/build.prop
 echo "persist.sys.computility.gpulevel=6" >> build/portrom/images/product/etc/build.prop
 echo "persist.sys.computility.version=2025" >> build/portrom/images/product/etc/build.prop
-sed -i "s/ro.miui.support.system.app.uninstall.v2=true/#ro.miui.support.system.app.uninstall.v2=true/g" build/portrom/images/mi_ext/etc/build.prop || true
+sed -i "s/ro.miui.support.system.app.uninstall.v2=true/#ro.miui.support.system.app.uninstall.v2=true/g" build/portrom/images/product/etc/build.prop || true
 echo "ro.crypto.state=encrypted" >> build/portrom/images/vendor/build.prop
 echo "persist.sys.usap_pool_enabled=false" >> build/portrom/images/product/etc/build.prop
 echo "persist.sys.dynamic_usap_enabled=false" >> build/portrom/images/product/etc/build.prop
@@ -1097,7 +1106,6 @@ if [ "$pack_type" = "EXT" ];then
     product_size=$(echo "$product_size * 4096 / 4096 / 4096" | bc)
     odm_size=$(echo "$odm_size * 4096 / 4096 / 4096" | bc)
     system_ext_size=$(echo "$system_ext_size * 4096 / 4096 / 4096" | bc)
-    mi_ext_size=$(echo "$mi_ext_size * 4096 / 4096 / 4096" | bc)
     for i in ${super_list}; do
         mkdir -p build/portrom/images/$i/lost+found
         sudo touch -t 200901010000.00 build/portrom/images/$i/lost+found
@@ -1118,10 +1126,6 @@ if [ "$pack_type" = "EXT" ];then
         resize2fs -f -M build/portrom/images/$i.img
         fi
         img_free
-        if [[ $i == mi_ext ]]; then
-        sudo rm -rf build/portrom/images/$i
-        continue
-        fi
         size_free=$(tune2fs -l build/portrom/images/$i.img | awk '/Free blocks:/ { print $3}')
         # 第二次打包 (不预留空间)
         if [[ "$size_free" != 0 && "${Readaw}" != "true" ]]; then
@@ -1310,7 +1314,7 @@ else
 if [[ "$is_ab_device" == false ]];then
     blue "打包A-only super.img" "Packing super.img for A-only device"
     lpargs="-F --output build/portrom/images/super.img --metadata-size 65536 --super-name super --metadata-slots 2 --block-size 4096 --device super:$superSize --group=qti_dynamic_partitions:$superSize"
-    for pname in odm mi_ext system system_ext product vendor;do
+    for pname in odm system system_ext product vendor;do
         if [ -f "build/portrom/images/${pname}.img" ];then
             if [[ "$OSTYPE" == "darwin"* ]];then
                subsize=$(find build/portrom/images/${pname}.img | xargs stat -f%z | awk ' {s+=$1} END { print s }')
