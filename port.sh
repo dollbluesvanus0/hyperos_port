@@ -280,6 +280,8 @@ for part in ${super_list};do
 done
 rm -rf config
 
+extract_partition "${work_dir}/build/portrom/images/mi_ext.img" "${work_dir}/build/portrom/images/"
+
 blue "合并 mi_ext 到其他分区" "Merging mi_ext to other partitions"
 if [ -d "build/portrom/images/mi_ext" ]; then
     cp -rf build/portrom/images/mi_ext/product/* build/portrom/images/product/ 2>/dev/null || true
