@@ -91,7 +91,7 @@ blue "正在检测ROM底包" "Validating BASEROM.."
 if unzip -l ${baserom} | grep -q "payload.bin"; then
     baserom_type="payload"
     green "检测到payload.bin文件" "Found payload.bin file"
-    super_list="vendor mi_ext odm odm_dlkm system system_dlkm vendor_dlkm product product_dlkm system_ext"
+    super_list="vendor mi_ext odm system product system_ext"
 elif unzip -l ${baserom} | grep -q "br$";then
     baserom_type="br"
     green "检测到broli文件" "Found broli file"
@@ -235,12 +235,12 @@ else
     pack_type="EXT"
 fi
 
-for part in system system_dlkm system_ext product product_dlkm mi_ext ;do
+for part in system system_ext product mi_ext ;do
     extract_partition build/baserom/images/${part}.img build/baserom/images    
 done
 
 # Move those to portrom folder. We need to pack those imgs into final port rom
-for image in vendor odm vendor_dlkm odm_dlkm;do
+for image in vendor odm;do
     if [ -f build/baserom/images/${image}.img ];then
         mv -f build/baserom/images/${image}.img build/portrom/images/${image}.img
 
@@ -252,9 +252,9 @@ done
 
 # Extract the partitions list that need to pack into the super.img
 super_list=$(sed '/^#/d;/^\//d;/overlay/d;/^$/d' build/portrom/images/vendor/etc/fstab.qcom 2>/dev/null \
-                | awk '{ print $1}' | sort | uniq)
+                | awk '{ print $1}' | sort | uniq | grep -v "_dlkm")
 if [ -z "$super_list" ]; then
-    super_list="vendor mi_ext odm odm_dlkm system system_dlkm vendor_dlkm product product_dlkm system_ext"
+    super_list="vendor mi_ext odm system product system_ext"
 fi
 
 # 分解镜像
