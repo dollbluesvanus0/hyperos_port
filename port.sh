@@ -248,8 +248,11 @@ for image in vendor odm vendor_dlkm odm_dlkm;do
 done
 
 # Extract the partitions list that need to pack into the super.img
-super_list=$(sed '/^#/d;/^\//d;/overlay/d;/^$/d' build/portrom/images/vendor/etc/fstab.qcom \
+super_list=$(sed '/^#/d;/^\//d;/overlay/d;/^$/d' build/portrom/images/vendor/etc/fstab.qcom 2>/dev/null \
                 | awk '{ print $1}' | sort | uniq)
+if [ -z "$super_list" ]; then
+    super_list="vendor mi_ext odm odm_dlkm system system_dlkm vendor_dlkm product product_dlkm system_ext"
+fi
 
 # 分解镜像
 green "开始提取逻辑分区镜像" "Starting extract portrom partition from img"
@@ -1026,24 +1029,6 @@ for anykernel_dir in tmp/anykernel*; do
     rm -rf $anykernel_dir
 done
 
-#添加erofs文件系统fstab
-if [ ${pack_type} == "EROFS" ];then
-    yellow "检查 vendor fstab.qcom是否需要添加erofs挂载点" "Validating whether adding erofs mount points is needed."
-    if ! grep -q "erofs" build/portrom/images/vendor/etc/fstab.qcom ; then
-               for pname in system odm vendor product mi_ext system_ext; do
-                     sed -i "/\/${pname}[[:space:]]\+ext4/{p;s/ext4/erofs/;s/ro,barrier=1,discard/ro/;}" build/portrom/images/vendor/etc/fstab.qcom
-                     added_line=$(sed -n "/\/${pname}[[:space:]]\+erofs/p" build/portrom/images/vendor/etc/fstab.qcom)
-    
-                    if [ -n "$added_line" ]; then
-                        yellow "添加$pname" "Adding mount point $pname"
-                    else
-                        error "添加失败，请检查" "Adding faild, please check."
-                        exit 1
-                        
-                    fi
-                done
-    fi
-fi
 
 # 去除avb校验
 blue "去除avb校验" "Disable avb verification."
