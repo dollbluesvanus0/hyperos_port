@@ -91,7 +91,7 @@ blue "正在检测ROM底包" "Validating BASEROM.."
 if unzip -l ${baserom} | grep -q "payload.bin"; then
     baserom_type="payload"
     green "检测到payload.bin文件" "Found payload.bin file"
-    super_list="vendor mi_ext odm odm_dlkm system system_dlkm vendor_dlkm product product_dlkm system_ext"
+    super_list="vendor odm system product system_ext"
 elif unzip -l ${baserom} | grep -q "br$";then
     baserom_type="br"
     green "检测到broli文件" "Found broli file"
@@ -200,6 +200,9 @@ else
     green "移植包 [payload.bin] 提取完毕" "[payload.bin] extracted."
 fi
 
+blue "正在删除底包和移植包以释放空间" "Deleting BASEROM and PORTROM zip files to free up space..."
+rm -rf ${baserom} ${portrom}
+
 if [[ ${is_base_rom_eu} == true ]];then
     blue "开始分解底包 [super.img]" "Unpacking BASEROM [super.img]"
     super_list=$(python3 bin/lpunpack.py --info build/baserom/super.img | grep "super:" | awk '{ print $5 }')
@@ -232,12 +235,12 @@ else
     pack_type="EXT"
 fi
 
-for part in system system_dlkm system_ext product product_dlkm mi_ext ;do
+for part in system system_ext product mi_ext ;do
     extract_partition build/baserom/images/${part}.img build/baserom/images    
 done
 
 # Move those to portrom folder. We need to pack those imgs into final port rom
-for image in vendor odm vendor_dlkm odm_dlkm;do
+for image in vendor odm;do
     if [ -f build/baserom/images/${image}.img ];then
         mv -f build/baserom/images/${image}.img build/portrom/images/${image}.img
 
@@ -248,8 +251,11 @@ for image in vendor odm vendor_dlkm odm_dlkm;do
 done
 
 # Extract the partitions list that need to pack into the super.img
-super_list=$(sed '/^#/d;/^\//d;/overlay/d;/^$/d' build/portrom/images/vendor/etc/fstab.qcom \
-                | awk '{ print $1}' | sort | uniq)
+super_list=$(sed '/^#/d;/^\//d;/overlay/d;/^$/d' build/portrom/images/vendor/etc/fstab.qcom 2>/dev/null \
+                | awk '{ print $1}' | sort | uniq | grep -vE "(_dlkm|mi_ext)")
+if [ -z "$super_list" ]; then
+    super_list="vendor odm system product system_ext"
+fi
 
 # 分解镜像
 green "开始提取逻辑分区镜像" "Starting extract portrom partition from img"
@@ -274,6 +280,16 @@ for part in ${super_list};do
 done
 rm -rf config
 
+extract_partition "${work_dir}/build/portrom/images/mi_ext.img" "${work_dir}/build/portrom/images/"
+
+blue "合并 mi_ext 到其他分区" "Merging mi_ext to other partitions"
+if [ -d "build/portrom/images/mi_ext" ]; then
+    cp -rf build/portrom/images/mi_ext/product/* build/portrom/images/product/ 2>/dev/null || true
+    cp -rf build/portrom/images/mi_ext/system/* build/portrom/images/system/system/ 2>/dev/null || true
+    cp -rf build/portrom/images/mi_ext/system_ext/* build/portrom/images/system_ext/ 2>/dev/null || true
+    cat build/portrom/images/mi_ext/etc/build.prop >> build/portrom/images/product/etc/build.prop 2>/dev/null || true
+fi
+
 blue "正在获取ROM参数" "Fetching ROM build prop."
 
 # 安卓版本
@@ -290,7 +306,7 @@ green "SDK 版本: 底包为 [SDK ${base_android_sdk}], 移植包为 [SDK ${port
 base_rom_version=$(< build/portrom/images/vendor/build.prop grep "ro.vendor.build.version.incremental" |awk 'NR==1' |cut -d '=' -f 2)
 
 #HyperOS版本号获取
-port_mios_version_incremental=$(< build/portrom/images/mi_ext/etc/build.prop grep "ro.mi.os.version.incremental" | awk 'NR==1' | cut -d '=' -f 2)
+port_mios_version_incremental=$(< build/portrom/images/product/etc/build.prop grep "ro.mi.os.version.incremental" | awk 'NR==1' | cut -d '=' -f 2)
 #替换机型代号,比如小米10：UNBCNXM -> UJBCNXM
 
 port_device_code=$(echo $port_mios_version_incremental | cut -d "." -f 5)
@@ -544,16 +560,6 @@ else
     blue "File $targetVintf not found."
 fi
 
-if [[ ${port_rom_code} == "sheng" ]] || [[ ${port_android_version} == "15" ]];then
-    blue "Skip StrongToast UI fix"
-elif [[ ${port_rom_code} == "houji" ]] || [[ ${port_rom_code} == "shennong" ]] ;then
-    blue "左侧挖孔灵动岛修复" "StrongToast UI fix"
-    patch_smali "MiuiSystemUI.apk" "MIUIStrongToast\$2.smali" "const\/4 v7\, 0x0" "iget-object v7\, v1\, Lcom\/android\/systemui\/toast\/MIUIStrongToast;->mRLLeft:Landroid\/widget\/RelativeLayout;\\n\\tinvoke-virtual {v7}, Landroid\/widget\/RelativeLayout;->getLeft()I\\n\\tmove-result v7\\n\\tint-to-float v7,v7"
-else
-blue "左侧挖孔灵动岛修复" "StrongToast UI fix"
-    patch_smali "MiuiSystemUI.apk" "MIUIStrongToast\$2.smali" "const\/4 v9\, 0x0" "iget-object v9\, v1\, Lcom\/android\/systemui\/toast\/MIUIStrongToast;->mRLLeft:Landroid\/widget\/RelativeLayout;\\n\\tinvoke-virtual {v9}, Landroid\/widget\/RelativeLayout;->getLeft()I\\n\\tmove-result v9\\n\\tint-to-float v9,v9"
-fi
-
 if [[ ${is_eu_rom} == "true" ]];then
     patch_smali "miui-services.jar" "SystemServerImpl.smali" ".method public constructor <init>()V/,/.end method" ".method public constructor <init>()V\n\t.registers 1\n\tinvoke-direct {p0}, Lcom\/android\/server\/SystemServerStub;-><init>()V\n\n\treturn-void\n.end method" "regex"
 else 
@@ -667,7 +673,7 @@ sed -i "/tango.*/d" build/portrom/images/system/system/build.prop || true
 echo "persist.sys.computility.cpulevel=6" >> build/portrom/images/product/etc/build.prop
 echo "persist.sys.computility.gpulevel=6" >> build/portrom/images/product/etc/build.prop
 echo "persist.sys.computility.version=2025" >> build/portrom/images/product/etc/build.prop
-sed -i "s/ro.miui.support.system.app.uninstall.v2=true/#ro.miui.support.system.app.uninstall.v2=true/g" build/portrom/images/mi_ext/etc/build.prop || true
+sed -i "s/ro.miui.support.system.app.uninstall.v2=true/#ro.miui.support.system.app.uninstall.v2=true/g" build/portrom/images/product/etc/build.prop || true
 echo "ro.crypto.state=encrypted" >> build/portrom/images/vendor/build.prop
 echo "persist.sys.usap_pool_enabled=false" >> build/portrom/images/product/etc/build.prop
 echo "persist.sys.dynamic_usap_enabled=false" >> build/portrom/images/product/etc/build.prop
@@ -1026,24 +1032,6 @@ for anykernel_dir in tmp/anykernel*; do
     rm -rf $anykernel_dir
 done
 
-#添加erofs文件系统fstab
-if [ ${pack_type} == "EROFS" ];then
-    yellow "检查 vendor fstab.qcom是否需要添加erofs挂载点" "Validating whether adding erofs mount points is needed."
-    if ! grep -q "erofs" build/portrom/images/vendor/etc/fstab.qcom ; then
-               for pname in system odm vendor product mi_ext system_ext; do
-                     sed -i "/\/${pname}[[:space:]]\+ext4/{p;s/ext4/erofs/;s/ro,barrier=1,discard/ro/;}" build/portrom/images/vendor/etc/fstab.qcom
-                     added_line=$(sed -n "/\/${pname}[[:space:]]\+erofs/p" build/portrom/images/vendor/etc/fstab.qcom)
-    
-                    if [ -n "$added_line" ]; then
-                        yellow "添加$pname" "Adding mount point $pname"
-                    else
-                        error "添加失败，请检查" "Adding faild, please check."
-                        exit 1
-                        
-                    fi
-                done
-    fi
-fi
 
 # 去除avb校验
 blue "去除avb校验" "Disable avb verification."
@@ -1109,7 +1097,6 @@ if [ "$pack_type" = "EXT" ];then
     product_size=$(echo "$product_size * 4096 / 4096 / 4096" | bc)
     odm_size=$(echo "$odm_size * 4096 / 4096 / 4096" | bc)
     system_ext_size=$(echo "$system_ext_size * 4096 / 4096 / 4096" | bc)
-    mi_ext_size=$(echo "$mi_ext_size * 4096 / 4096 / 4096" | bc)
     for i in ${super_list}; do
         mkdir -p build/portrom/images/$i/lost+found
         sudo touch -t 200901010000.00 build/portrom/images/$i/lost+found
@@ -1130,10 +1117,6 @@ if [ "$pack_type" = "EXT" ];then
         resize2fs -f -M build/portrom/images/$i.img
         fi
         img_free
-        if [[ $i == mi_ext ]]; then
-        sudo rm -rf build/portrom/images/$i
-        continue
-        fi
         size_free=$(tune2fs -l build/portrom/images/$i.img | awk '/Free blocks:/ { print $3}')
         # 第二次打包 (不预留空间)
         if [[ "$size_free" != 0 && "${Readaw}" != "true" ]]; then
@@ -1322,7 +1305,7 @@ else
 if [[ "$is_ab_device" == false ]];then
     blue "打包A-only super.img" "Packing super.img for A-only device"
     lpargs="-F --output build/portrom/images/super.img --metadata-size 65536 --super-name super --metadata-slots 2 --block-size 4096 --device super:$superSize --group=qti_dynamic_partitions:$superSize"
-    for pname in odm mi_ext system system_ext product vendor;do
+    for pname in odm system system_ext product vendor;do
         if [ -f "build/portrom/images/${pname}.img" ];then
             if [[ "$OSTYPE" == "darwin"* ]];then
                subsize=$(find build/portrom/images/${pname}.img | xargs stat -f%z | awk ' {s+=$1} END { print s }')

@@ -11,25 +11,21 @@ on:
         description: 'Port ROM URL'
         required: true
         type: string
-      pixeldrain_api_key:
-        description: 'Pixeldrain API Key'
-        required: true
-        type: string
 
 jobs:
   port:
     runs-on: ubuntu-24.04
     steps:
       - name: Maximize build space
-        uses: easimon/maximize-build-space@master
+        uses: jlumbroso/free-disk-space@main
         with:
-          root-reserve-mb: 8192
-          swap-size-mb: 8192
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-docker-images: 'true'
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -46,16 +42,21 @@ jobs:
           sed -i 's/pack_method=aosp/pack_method=none/g' bin/port_config
 
       - name: Run port script
+        env:
+          BASEROM: ${{ github.event.inputs.baserom }}
+          PORTROM: ${{ github.event.inputs.portrom }}
         run: |
-          sudo ./port.sh "${{ github.event.inputs.baserom }}" "${{ github.event.inputs.portrom }}"
+          sudo ./port.sh "$BASEROM" "$PORTROM"
 
       - name: Upload to Pixeldrain
+        env:
+          PIXELDRAIN_API_KEY: ${{ secrets.PIXELDRAIN_API_KEY }}
         run: |
           cd out
           ZIP_FILE=$(ls *.zip | head -n 1)
           if [ -n "$ZIP_FILE" ]; then
             echo "Uploading $ZIP_FILE to Pixeldrain..."
-            curl -T "$ZIP_FILE" -u ":${{ github.event.inputs.pixeldrain_api_key }}" "https://pixeldrain.com/api/file/"
+            curl -T "$ZIP_FILE" -u ":$PIXELDRAIN_API_KEY" "https://pixeldrain.com/api/file/"
           else
             echo "No zip file found in out/"
             exit 1
