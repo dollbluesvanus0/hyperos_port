@@ -200,6 +200,9 @@ else
     green "移植包 [payload.bin] 提取完毕" "[payload.bin] extracted."
 fi
 
+blue "正在删除底包和移植包以释放空间" "Deleting BASEROM and PORTROM zip files to free up space..."
+rm -rf ${baserom} ${portrom}
+
 if [[ ${is_base_rom_eu} == true ]];then
     blue "开始分解底包 [super.img]" "Unpacking BASEROM [super.img]"
     super_list=$(python3 bin/lpunpack.py --info build/baserom/super.img | grep "super:" | awk '{ print $5 }')
