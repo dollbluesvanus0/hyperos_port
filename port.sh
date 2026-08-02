@@ -288,7 +288,6 @@ if [ -d "build/portrom/images/mi_ext" ]; then
     cp -rf build/portrom/images/mi_ext/system/* build/portrom/images/system/system/ 2>/dev/null || true
     cp -rf build/portrom/images/mi_ext/system_ext/* build/portrom/images/system_ext/ 2>/dev/null || true
     cat build/portrom/images/mi_ext/etc/build.prop >> build/portrom/images/product/etc/build.prop 2>/dev/null || true
-    rm -rf build/portrom/images/mi_ext
 fi
 
 blue "正在获取ROM参数" "Fetching ROM build prop."
