@@ -280,14 +280,6 @@ for part in ${super_list};do
 done
 rm -rf config
 
-if [[ ! -f build/portrom/images/mi_ext.img ]]; then
-    if [[ ${is_eu_rom} == true || ${portrom_type} == "fastboot" ]]; then
-        blue "PORTROM super.img 提取 [mi_ext] 分区..." "Extracting [mi_ext] from PORTROM super.img"
-        python3 bin/lpunpack.py -p mi_ext_a build/portrom/super.img build/portrom/images 2>/dev/null || true
-        mv build/portrom/images/mi_ext_a.img build/portrom/images/mi_ext.img 2>/dev/null || true
-    fi
-fi
-
 extract_partition "${work_dir}/build/portrom/images/mi_ext.img" "${work_dir}/build/portrom/images/"
 
 blue "合并 mi_ext 到其他分区" "Merging mi_ext to other partitions"
