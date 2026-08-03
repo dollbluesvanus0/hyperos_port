@@ -1,0 +1,63 @@
+name: Port ROM
+
+on:
+  workflow_dispatch:
+    inputs:
+      baserom:
+        description: 'Base ROM URL'
+        required: true
+        type: string
+      portrom:
+        description: 'Port ROM URL'
+        required: true
+        type: string
+
+jobs:
+  port:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Maximize build space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git aria2 unzip zstd bc xmlstarlet
+          sudo ./setup.sh
+
+      - name: Force EROFS and Zip Packaging
+        run: |
+          sed -i 's/repack_with_ext4=true/repack_with_ext4=false/g' bin/port_config
+          sed -i 's/pack_method=aosp/pack_method=none/g' bin/port_config
+
+      - name: Run port script
+        env:
+          BASEROM: ${{ github.event.inputs.baserom }}
+          PORTROM: ${{ github.event.inputs.portrom }}
+        run: |
+          sudo ./port.sh "$BASEROM" "$PORTROM"
+
+      - name: Upload to Pixeldrain
+        env:
+          PIXELDRAIN_API_KEY: ${{ secrets.PIXELDRAIN_API_KEY }}
+        run: |
+          cd out
+          ZIP_FILE=$(ls *.zip 2>/dev/null | head -n 1 || true)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "No zip file found. Manually creating ROM.zip..."
+            zip -r ROM.zip ./*
+            ZIP_FILE="ROM.zip"
+          fi
+          echo "Uploading $ZIP_FILE to Pixeldrain..."
+          curl -T "$ZIP_FILE" -u ":$PIXELDRAIN_API_KEY" "https://pixeldrain.com/api/file/"
