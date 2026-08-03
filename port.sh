@@ -722,7 +722,7 @@ for prop in $(find build/baserom/images/product build/baserom/images/system -typ
 done
 
 # 未在底包找到则默认440,如果是其他值可自己修改
-[ -z ${base_rom_density} ] && base_rom_density=440
+[ -z ${base_rom_density} ] && base_rom_density=560
 
 found=0
 for prop in $(find build/portrom/images/product build/portrom/images/system -type f -name "build.prop");do
