@@ -280,6 +280,14 @@ for part in ${super_list};do
 done
 rm -rf config
 
+if [[ ! -f build/portrom/images/mi_ext.img ]]; then
+    if [[ ${is_eu_rom} == true || ${portrom_type} == "fastboot" ]]; then
+        blue "PORTROM super.img 提取 [mi_ext] 分区..." "Extracting [mi_ext] from PORTROM super.img"
+        python3 bin/lpunpack.py -p mi_ext_a build/portrom/super.img build/portrom/images 2>/dev/null || true
+        mv build/portrom/images/mi_ext_a.img build/portrom/images/mi_ext.img 2>/dev/null || true
+    fi
+fi
+
 extract_partition "${work_dir}/build/portrom/images/mi_ext.img" "${work_dir}/build/portrom/images/"
 
 blue "合并 mi_ext 到其他分区" "Merging mi_ext to other partitions"
@@ -895,6 +903,18 @@ fi
 sourceAnimationZIP=$(find build/baserom/images/product -type f -name "bootanimation.zip")
 targetAnimationZIP=$(find build/portrom/images/product -type f -name "bootanimation.zip")
 cp -rf $sourceAnimationZIP $targetAnimationZIP
+
+blue "Downloading and replacing MiuiCamera.apk"
+gdown "https://drive.google.com/uc?id=1a_I20XHYjxNOn5mudIoenHCRaqGPAb93" -O tmp/MiuiCamera.apk || true
+if [ -f tmp/MiuiCamera.apk ]; then
+    targetCameraPath=$(find build/portrom/images/product -type f -name "MiuiCamera.apk")
+    if [ -n "$targetCameraPath" ]; then
+        cp -rf tmp/MiuiCamera.apk "$targetCameraPath"
+    else
+        mkdir -p build/portrom/images/product/priv-app/MiuiCamera
+        cp -rf tmp/MiuiCamera.apk build/portrom/images/product/priv-app/MiuiCamera/MiuiCamera.apk
+    fi
+fi
 
 if [[ -d "devices/common" ]];then
     commonCamera=$(find devices/common -type f -name "MiuiCamera.apk")
