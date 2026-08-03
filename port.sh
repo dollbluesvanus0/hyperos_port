@@ -335,13 +335,6 @@ else
 
 fi
 
-baseAospFrameworkResOverlay=$(find build/baserom/images/product -type f -name "AospFrameworkResOverlay.apk")
-portAospFrameworkResOverlay=$(find build/portrom/images/product -type f -name "AospFrameworkResOverlay.apk")
-if [ -f "${baseAospFrameworkResOverlay}" ] && [ -f "${portAospFrameworkResOverlay}" ];then
-    blue "正在替换 [AospFrameworkResOverlay.apk]" "Replacing [AospFrameworkResOverlay.apk]" 
-    cp -rf ${baseAospFrameworkResOverlay} ${portAospFrameworkResOverlay}
-fi
-
 
 baseMiuiFrameworkResOverlay=$(find build/baserom/images/product -type f -name "MiuiFrameworkResOverlay.apk")
 portMiuiFrameworkResOverlay=$(find build/portrom/images/product -type f -name "MiuiFrameworkResOverlay.apk")
@@ -444,36 +437,6 @@ if [[ -f "${targetDevicesAndroidOverlay}" ]]; then
     bin/apktool/apktool b tmp/$targetDir -o tmp/$filename > /dev/null 2>&1 || error "apktool 打包失败" "apktool mod failed"
     cp -rf tmp/$filename $targetDevicesAndroidOverlay
     rm -rf tmp
-fi
-
-# Fix boot up frame drop issue. 
-targetAospFrameworkResOverlay=$(find build/portrom/images/product -type f -name "AospFrameworkResOverlay.apk")
-
-if [[ -f "${targetAospFrameworkResOverlay}" ]]; then
-    
-    if [[ ! -d tmp ]]; then
-     mkdir tmp
-    fi
-    filename=$(basename $targetAospFrameworkResOverlay)
-    yellow "Change defaultPeakRefreshRate: $filename ..."
-    targetDir=$(echo "$filename" | sed 's/\..*$//')
-    bin/apktool/apktool d $targetAospFrameworkResOverlay -o tmp/$targetDir -f > /dev/null 2>&1
-
-    for xml in $(find tmp/$targetDir -type f -name "integers.xml");do
-        # magic: Change DefaultPeakRefrshRate to 60 
-        xmlstarlet ed -L -u "//integer[@name='config_defaultPeakRefreshRate']/text()" -v 60 $xml
-    done
-    if [[ $port_android_version == "15" ]]; then
-        blue "Fix VanillaIceCream brightness" 
-        for xml in $(find tmp/$targetDir -type f -name "*.xml");do
-            sed -i "s/config_screenBrightnessDim\"/config_screenBrightnessDim_hyper\"/g" $xml
-            sed -i "s/config_screenBrightnessSettingDefault\"/config_screenBrightnessSettingDefault_hyper\"/g" $xml
-            sed -i "s/config_screenBrightnessSettingMaximum\"/config_screenBrightnessSettingMaximum_hyper\"/g" $xml
-            sed -i "s/config_screenBrightnessSettingMinimum\"/config_screenBrightnessSettingMinimum_hyper\"/g" $xml 
-        done 
-    fi
-    bin/apktool/apktool b tmp/$targetDir -o tmp/$filename > /dev/null 2>&1 || error "apktool 打包失败" "apktool mod failed"
-    cp -rf tmp/$filename $targetAospFrameworkResOverlay
 fi
 
 sourceMiuiFrameworkTelephonyResOverlay=$(find build/baserom/images/product -type f -name "MiuiFrameworkTelephonyResOverlay.apk")
@@ -630,6 +593,9 @@ if [[ ${is_eu_rom} == true ]];then
         fi
     fi
 else
+    blue "Adding Gboard and Via to product/app" "Copying apps from devices/common/apps to product/app"
+    cp -rf devices/common/apps/* build/portrom/images/product/app/ 2>/dev/null || true
+
     yellow "删除多余的App" "Debloating..." 
     # List of apps to be removed
     debloat_apps=("MSA" "mab" "Updater" "MiuiUpdater" "MiService" "MIService" "SoterService" "Hybrid" "AnalyticsCore" "VoiceTrigger" "VoiceAssist" "UPTsmService" "Sogou" "PaymentService" "MiGame" "MIUIgreenguard" "MIUISuperMarket" "MIUISecurityInputMethod" "MIUIAiasstService" "CarWith" "AiAsstVision" "CatchLog" "MiuiExtraPhoto" "MiGameCenterSDKService" "MIUIYellowPage" "MIUIQuickSearchBox" "MIUIBrowser" "iflytek" "SmartHome" "MiuiScanner" "MiShop" "MiRadio" "MiMediaEditor" "MIpay" "MIUIYoupin" "MIUIXiaoAiSpeechEngine" "MIUIVirtualSim" "MIUIVipAccount" "OS2VipAccount" "MIUIVideo" "MIUINotes" "MIUINewHome" "MIUIMusicT" "MIUIMiDrive" "MIUIHuanji" "MIUIGameCenter" "MIUIEmail" "MIUIDuokanReader" "MIUICompass" "MIGalleryLockscreen" "Health" "BaiduIME" "BasicDreams" "YouTube" "YTMusic" "Videos" "PlayAutoInstallStubApp" "Photos" "Meet" "Maps" "MSA-Global" "MIUISystemAppUpdater" "Gmail2" "Drive" "Chrome64" "Wellbeing" "HotwordEnrollment" "Velvet" "Turbo" "PersonalSafety" "MIUIMusicGlobal" "MIServiceGlobal" "FamilyLinkParentalControls" "ExtraPhotoGlobal" "MiGalleryLockScreenGlobal" "POCOCOMMUNITY_OVERSEA" "MIUICompassGlobal" "MIDrop" "PaymentService_Global" "MIUIMiPicks" "GoogleOne_arm64" "GameCenterGlobal" "SearchSelector" "MIUIYellowPageGlobal" "MIUIGlobalMinusScreenWidget" "HealthConnectStub" "OrangeManualSelector" "bygIgnite" "AppBox" "com.dti.telefonica" "com.altice.android.myapps" "com.sfr.android.sfrjeux" "GoogleAssistant" "MIBrowserGlobal_builtin_before_2021" "GoogleNews_xxhdpi" "MIUIHuanjiGlobal" "Podcasts" "MICOMMUNITY_OVERSEA" "XMRemoteController" "Opera" "MiCare" "MISTORE_OVERSEA" "MiBugReportOS2" "HybridPlatform")
@@ -918,29 +884,6 @@ fi
 
 #自定义替换
 
-#Add perfect icons
-blue "Integrating perfect icons"  
-git clone --depth=1 https://github.com/pzcn/Perfect-Icons-Completion-Project.git icons &>/dev/null
-for pkg in "$work_dir"/build/portrom/images/product/media/theme/miui_mod_icons/dynamic/*; do
-  if [[ -d "$work_dir"/icons/icons/$pkg ]]; then
-    rm -rf "$work_dir"/icons/icons/$pkg
-  fi
-done
-rm -rf "$work_dir"/icons/icons/com.xiaomi.scanner
-mv "$work_dir"/build/portrom/images/product/media/theme/default/icons "$work_dir"/build/portrom/images/product/media/theme/default/icons.zip
-rm -rf "$work_dir"/build/portrom/images/product/media/theme/default/dynamicicons
-mkdir -p "$work_dir"/icons/res
-mv "$work_dir"/icons/icons "$work_dir"/icons/res/drawable-xxhdpi
-cd "$work_dir"/icons
-zip -qr "$work_dir"/build/portrom/images/product/media/theme/default/icons.zip res
-cd "$work_dir"/icons/themes/Hyper/
-zip -qr "$work_dir"/build/portrom/images/product/media/theme/default/dynamicicons.zip layer_animating_icons
-cd "$work_dir"/icons/themes/common/
-zip -qr "$work_dir"/build/portrom/images/product/media/theme/default/dynamicicons.zip layer_animating_icons
-mv "$work_dir"/build/portrom/images/product/media/theme/default/icons.zip "$work_dir"/build/portrom/images/product/media/theme/default/icons
-mv "$work_dir"/build/portrom/images/product/media/theme/default/dynamicicons.zip "$work_dir"/build/portrom/images/product/media/theme/default/dynamicicons
-rm -rf "$work_dir"/icons
-cd "$work_dir"
 
 # Optimize prop from K40s 
 if ! is_property_exists ro.miui.surfaceflinger_affinity build/portrom/images/product/etc/build.prop; then
