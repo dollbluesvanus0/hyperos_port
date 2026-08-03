@@ -321,6 +321,13 @@ else
 fi
 green "ROM 版本: 底包为 [${base_rom_version}], 移植包为 [${port_rom_version}]" "ROM Version: BASEROM: [${base_rom_version}], PORTROM: [${port_rom_version}] "
 
+baseAospFrameworkResOverlay=$(find build/baserom/images/product -type f -name "AospFrameworkResOverlay.apk")
+portAospFrameworkResOverlay=$(find build/portrom/images/product -type f -name "AospFrameworkResOverlay.apk")
+if [ -f "${baseAospFrameworkResOverlay}" ] && [ -f "${portAospFrameworkResOverlay}" ];then
+    blue "正在替换 [AospFrameworkResOverlay.apk]" "Replacing [AospFrameworkResOverlay.apk]" 
+    cp -rf ${baseAospFrameworkResOverlay} ${portAospFrameworkResOverlay}
+fi
+
 # 代号
 #base_rom_code=$(< build/portrom/images/vendor/build.prop grep "ro.product.vendor.device" |awk 'NR==1' |cut -d '=' -f 2)
 base_rom_code=$(basename build/baserom/images/product/etc/device_features/*.xml .xml)
@@ -419,6 +426,36 @@ else
         blue "未找到MiuiBiometric，替换为原包" "MiuiBiometric is missing, copying from base..."
         cp -rf ${baseMiuiBiometric} build/portrom/images/product/app/
     fi
+fi
+
+# Fix boot up frame drop issue. 
+targetAospFrameworkResOverlay=$(find build/portrom/images/product -type f -name "AospFrameworkResOverlay.apk")
+
+if [[ -f "${targetAospFrameworkResOverlay}" ]]; then
+    
+    if [[ ! -d tmp ]]; then
+     mkdir tmp
+    fi
+    filename=$(basename $targetAospFrameworkResOverlay)
+    yellow "Change defaultPeakRefreshRate: $filename ..."
+    targetDir=$(echo "$filename" | sed 's/\..*$//')
+    bin/apktool/apktool d $targetAospFrameworkResOverlay -o tmp/$targetDir -f > /dev/null 2>&1
+
+    for xml in $(find tmp/$targetDir -type f -name "integers.xml");do
+        # magic: Change DefaultPeakRefrshRate to 60 
+        xmlstarlet ed -L -u "//integer[@name='config_defaultPeakRefreshRate']/text()" -v 60 $xml
+    done
+    if [[ $port_android_version == "15" || $port_android_version == "16" ]]; then
+        blue "Fix VanillaIceCream brightness" 
+        for xml in $(find tmp/$targetDir -type f -name "*.xml");do
+            sed -i "s/config_screenBrightnessDim\"/config_screenBrightnessDim_hyper\"/g" $xml
+            sed -i "s/config_screenBrightnessSettingDefault\"/config_screenBrightnessSettingDefault_hyper\"/g" $xml
+            sed -i "s/config_screenBrightnessSettingMaximum\"/config_screenBrightnessSettingMaximum_hyper\"/g" $xml
+            sed -i "s/config_screenBrightnessSettingMinimum\"/config_screenBrightnessSettingMinimum_hyper\"/g" $xml 
+        done 
+    fi
+    bin/apktool/apktool b tmp/$targetDir -o tmp/$filename > /dev/null 2>&1 || error "apktool 打包失败" "apktool mod failed"
+    cp -rf tmp/$filename $targetAospFrameworkResOverlay
 fi
 
 # 修复AOD问题
