@@ -641,15 +641,7 @@ if [[ ${is_eu_rom} == true ]];then
 else
     blue "Adding Gboard and Via to product/app" "Copying apps from devices/common/apps to product/app"
     cp -rf devices/common/apps/* build/portrom/images/product/app/ 2>/dev/null || true
-
-    blue "Downloading and installing Kaorios Toolbox"
-    KAORIOS_URL=$(curl -s https://api.github.com/repos/Wuang26/Kaorios-Toolbox/releases/latest | grep browser_download_url | grep "\.apk" | cut -d '"' -f 4)
-    wget -q "$KAORIOS_URL" -O tmp/KaoriosPatcher.apk || true
-    if [ -f tmp/KaoriosPatcher.apk ]; then
-        mkdir -p build/portrom/images/product/app/KaoriosPatcher
-        cp -rf tmp/KaoriosPatcher.apk build/portrom/images/product/app/KaoriosPatcher/KaoriosPatcher.apk
-    fi
-
+	
     yellow "删除多余的App" "Debloating..." 
     # List of apps to be removed
     debloat_apps=("MSA" "mab" "Updater" "MiuiUpdater" "MiService" "MIService" "SoterService" "Hybrid" "AnalyticsCore" "VoiceTrigger" "UPTsmService" "Sogou" "PaymentService" "MiGame" "MIUIgreenguard" "MIUISecurityInputMethod" "MIUIAiasstService" "CarWith" "AiAsstVision" "CatchLog" "MiuiExtraPhoto" "MiGameCenterSDKService" "MIUIYellowPage" "MIUIQuickSearchBox" "MIUIBrowser" "iflytek" "SmartHome" "MiuiScanner" "MiShop" "MiRadio" "MiMediaEditor" "MIpay" "MIUIYoupin" "MIUIXiaoAiSpeechEngine" "MIUIVirtualSim" "MIUIVipAccount" "OS2VipAccount" "MIUIVideo" "MIUINewHome" "MIUIMusicT" "MIUIMiDrive" "MIUIHuanji" "MIUIGameCenter" "MIUIEmail" "MIUIDuokanReader" "Health" "BaiduIME" "BasicDreams" "YouTube" "YTMusic" "Videos" "PlayAutoInstallStubApp" "Photos" "Meet" "Maps" "MSA-Global" "MIUISystemAppUpdater" "Gmail2" "Drive" "Chrome64" "Wellbeing" "HotwordEnrollment" "Velvet" "Turbo" "PersonalSafety" "MIUIMusicGlobal" "MIServiceGlobal" "FamilyLinkParentalControls" "ExtraPhotoGlobal" "POCOCOMMUNITY_OVERSEA" "MIDrop" "PaymentService_Global" "MIUIMiPicks" "GoogleOne_arm64" "GameCenterGlobal" "SearchSelector" "MIUIYellowPageGlobal" "MIUIGlobalMinusScreenWidget" "HealthConnectStub" "OrangeManualSelector" "bygIgnite" "AppBox" "com.dti.telefonica" "com.altice.android.myapps" "com.sfr.android.sfrjeux" "GoogleAssistant" "MIBrowserGlobal_builtin_before_2021" "GoogleNews_xxhdpi" "MIUIHuanjiGlobal" "Podcasts" "MICOMMUNITY_OVERSEA" "XMRemoteController" "Opera" "MiCare" "MISTORE_OVERSEA" "MiBugReportOS2" "HybridPlatform")
