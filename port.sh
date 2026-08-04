@@ -574,6 +574,56 @@ else
     if [[ ! -d tmp ]];then
         mkdir -p tmp/
     fi
+
+    blue "Running FrameworkPatcher for CN Notification Fix and Kaorios-Toolbox"
+    if [[ ! -d tmp/fw_patcher ]]; then
+        git clone https://github.com/FrameworksForge/FrameworkPatcher.git tmp/fw_patcher
+    fi
+
+    # Find the target JAR files
+    FW_JAR=$(find build/portrom/images -type f -name "framework.jar" | head -n 1)
+    MIUI_SERVICES_JAR=$(find build/portrom/images -type f -name "miui-services.jar" | head -n 1)
+
+    if [[ -f "$FW_JAR" ]] && [[ -f "$MIUI_SERVICES_JAR" ]]; then
+        cp "$FW_JAR" tmp/fw_patcher/
+        cp "$MIUI_SERVICES_JAR" tmp/fw_patcher/
+
+        pushd tmp/fw_patcher > /dev/null
+        export TOOLS_DIR="$(pwd)/../bin/apktool"
+
+        # Determine port_rom_version for naming (fallback if unset)
+        local_port_version=${port_rom_version:-"unknown"}
+
+        bash scripts/patcher_a${port_android_version}.sh ${port_android_sdk} ${base_rom_code} ${local_port_version} --framework --miui-services --cn-notification-fix --kaorios-toolbox
+
+        popd > /dev/null
+
+        if [[ -f tmp/fw_patcher/framework_patched.jar ]] && [[ -f tmp/fw_patcher/miui-services_patched.jar ]]; then
+            cp tmp/fw_patcher/framework_patched.jar "$FW_JAR"
+            cp tmp/fw_patcher/miui-services_patched.jar "$MIUI_SERVICES_JAR"
+            blue "Framework and miui-services patched successfully"
+
+            # Install Kaorios Toolbox APK and permissions
+            mkdir -p build/portrom/images/system/system/priv-app/KaoriosToolbox
+            cp tmp/fw_patcher/kaorios_toolbox/KaoriosToolbox.apk build/portrom/images/system/system/priv-app/KaoriosToolbox/
+            mkdir -p build/portrom/images/system/system/priv-app/KaoriosToolbox/lib
+            unzip -q tmp/fw_patcher/kaorios_toolbox/KaoriosToolbox.apk "lib/*" -d build/portrom/images/system/system/priv-app/KaoriosToolbox/ || true
+
+            mkdir -p build/portrom/images/system/system/etc/permissions
+            cp tmp/fw_patcher/kaorios_toolbox/privapp_whitelist_com.kousei.kaorios.xml build/portrom/images/system/system/etc/permissions/
+
+            echo "" >> build/portrom/images/system/system/build.prop
+            echo "# Kaorios Toolbox" >> build/portrom/images/system/system/build.prop
+            echo "persist.sys.kaorios=kousei" >> build/portrom/images/system/system/build.prop
+            echo "ro.control_privapp_permissions=" >> build/portrom/images/system/system/build.prop
+            blue "Kaorios Toolbox installed successfully"
+        else
+            red "FrameworkPatcher failed to generate patched JARs"
+        fi
+    else
+        yellow "framework.jar or miui-services.jar not found, skipping FrameworkPatcher"
+    fi
+
     blue "开始移除 Android 签名校验" "Disalbe Android 14 Apk Signature Verfier"
     mkdir -p tmp/services/
     cp -rf build/portrom/images/system/system/framework/services.jar tmp/services.jar
