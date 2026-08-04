@@ -444,15 +444,15 @@ if [[ -f "${targetAospFrameworkResOverlay}" ]]; then
     if [[ ! -d tmp ]]; then
      mkdir tmp
     fi
-    filename=$(basename $targetAospFrameworkResOverlay)
-    yellow "Change defaultPeakRefreshRate: $filename ..."
-    targetDir=$(echo "$filename" | sed 's/\..*$//')
-    bin/apktool/apktool d $targetAospFrameworkResOverlay -o tmp/$targetDir -f > /dev/null 2>&1
+    #filename=$(basename $targetAospFrameworkResOverlay)
+    #yellow "Change defaultPeakRefreshRate: $filename ..."
+    #targetDir=$(echo "$filename" | sed 's/\..*$//')
+    #bin/apktool/apktool d $targetAospFrameworkResOverlay -o tmp/$targetDir -f > /dev/null 2>&1
 
-    for xml in $(find tmp/$targetDir -type f -name "integers.xml");do
+    #for xml in $(find tmp/$targetDir -type f -name "integers.xml");do
         # magic: Change DefaultPeakRefrshRate to 60 
-        xmlstarlet ed -L -u "//integer[@name='config_defaultPeakRefreshRate']/text()" -v 60 $xml
-    done
+        #xmlstarlet ed -L -u "//integer[@name='config_defaultPeakRefreshRate']/text()" -v 120 $xml
+    #done
     if [[ $port_android_version == "15" || $port_android_version == "16" ]]; then
         blue "Fix VanillaIceCream brightness" 
         for xml in $(find tmp/$targetDir -type f -name "*.xml");do
