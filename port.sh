@@ -624,48 +624,48 @@ else
         yellow "framework.jar or miui-services.jar not found, skipping FrameworkPatcher"
     fi
 
-    blue "开始移除 Android 签名校验" "Disalbe Android 14 Apk Signature Verfier"
-    mkdir -p tmp/services/
-    cp -rf build/portrom/images/system/system/framework/services.jar tmp/services.jar
+    #blue "开始移除 Android 签名校验" "Disalbe Android 14 Apk Signature Verfier"
+    #mkdir -p tmp/services/
+    #cp -rf build/portrom/images/system/system/framework/services.jar tmp/services.jar
     
-    java -jar bin/apktool/APKEditor.jar d -f -i tmp/services.jar -o tmp/services  > /dev/null 2>&1
-    target_method='getMinimumSignatureSchemeVersionForTargetSdk' 
-    old_smali_dir=""
-    declare -a smali_dirs
+    #java -jar bin/apktool/APKEditor.jar d -f -i tmp/services.jar -o tmp/services  > /dev/null 2>&1
+    #target_method='getMinimumSignatureSchemeVersionForTargetSdk' 
+    #old_smali_dir=""
+    #declare -a smali_dirs
 
-    while read -r smali_file; do
-        smali_dir=$(echo "$smali_file" | cut -d "/" -f 3)
+    #while read -r smali_file; do
+        #smali_dir=$(echo "$smali_file" | cut -d "/" -f 3)
 
-        if [[ $smali_dir != $old_smali_dir ]]; then
-            smali_dirs+=("$smali_dir")
-        fi
+        #if [[ $smali_dir != $old_smali_dir ]]; then
+            #smali_dirs+=("$smali_dir")
+        #fi
 
-        method_line=$(grep -n "$target_method" "$smali_file" | cut -d ':' -f 1)
-        register_number=$(tail -n +"$method_line" "$smali_file" | grep -m 1 "move-result" | tr -dc '0-9')
-        move_result_end_line=$(awk -v ML=$method_line 'NR>=ML && /move-result /{print NR; exit}' "$smali_file")
-        orginal_line_number=$method_line
-        replace_with_command="const/4 v${register_number}, 0x0"
-        { sed -i "${orginal_line_number},${move_result_end_line}d" "$smali_file" && sed -i "${orginal_line_number}i\\${replace_with_command}" "$smali_file"; } &&    blue "${smali_file}  修改成功" "${smali_file} patched"
-        old_smali_dir=$smali_dir
-    done < <(find tmp/services/smali/*/com/android/server/pm/ tmp/services/smali/*/com/android/server/pm/pkg/parsing/ -maxdepth 1 -type f -name "*.smali" -exec grep -H "$target_method" {} \; | cut -d ':' -f 1)
+        #method_line=$(grep -n "$target_method" "$smali_file" | cut -d ':' -f 1)
+        #register_number=$(tail -n +"$method_line" "$smali_file" | grep -m 1 "move-result" | tr -dc '0-9')
+        #move_result_end_line=$(awk -v ML=$method_line 'NR>=ML && /move-result /{print NR; exit}' "$smali_file")
+        #orginal_line_number=$method_line
+        #replace_with_command="const/4 v${register_number}, 0x0"
+        #{ sed -i "${orginal_line_number},${move_result_end_line}d" "$smali_file" && sed -i "${orginal_line_number}i\\${replace_with_command}" "$smali_file"; } &&    blue "${smali_file}  修改成功" "${smali_file} patched"
+        #old_smali_dir=$smali_dir
+    #done < <(find tmp/services/smali/*/com/android/server/pm/ tmp/services/smali/*/com/android/server/pm/pkg/parsing/ -maxdepth 1 -type f -name "*.smali" -exec grep -H "$target_method" {} \; | cut -d ':' -f 1)
     
-    target_canJoinSharedUserId_method='canJoinSharedUserId' 
-    find tmp/services/ -type f -name "ReconcilePackageUtils.smali" | while read smali_file; do
-        cp -rfv $smali_file tmp/
-        method_line=$(grep -n "$target_canJoinSharedUserId_method" "$smali_file" | cut -d ':' -f 1)
+    #target_canJoinSharedUserId_method='canJoinSharedUserId' 
+    #find tmp/services/ -type f -name "ReconcilePackageUtils.smali" | while read smali_file; do
+        #cp -rfv $smali_file tmp/
+        #method_line=$(grep -n "$target_canJoinSharedUserId_method" "$smali_file" | cut -d ':' -f 1)
 
-        register_number=$(tail -n +"$method_line" "$smali_file" | grep -m 1 "move-result" | tr -dc '0-9')
+        #register_number=$(tail -n +"$method_line" "$smali_file" | grep -m 1 "move-result" | tr -dc '0-9')
 
-        move_result_end_line=$(awk -v ML=$method_line 'NR>=ML && /move-result /{print NR; exit}' "$smali_file")
+        #move_result_end_line=$(awk -v ML=$method_line 'NR>=ML && /move-result /{print NR; exit}' "$smali_file")
 
-        replace_with_command="const/4 v${register_number}, 0x1"
+        #replace_with_command="const/4 v${register_number}, 0x1"
 
-        { sed -i "${method_line},${move_result_end_line}d" "$smali_file" && sed -i "${method_line}i\\${replace_with_command}" "$smali_file"; }
-    done
-    java -jar bin/apktool/APKEditor.jar b -f -i tmp/services -o tmp/services_patched.jar > /dev/null 2>&1
-    cp -rf tmp/services_patched.jar build/portrom/images/system/system/framework/services.jar
+        #{ sed -i "${method_line},${move_result_end_line}d" "$smali_file" && sed -i "${method_line}i\\${replace_with_command}" "$smali_file"; }
+    #done
+    #java -jar bin/apktool/APKEditor.jar b -f -i tmp/services -o tmp/services_patched.jar > /dev/null 2>&1
+    #cp -rf tmp/services_patched.jar build/portrom/images/system/system/framework/services.jar
     
-fi
+#fi
 
 # 主题防恢复
 if [ -f build/portrom/images/system/system/etc/init/hw/init.rc ];then
