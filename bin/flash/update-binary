@@ -18,21 +18,6 @@ package_extract_zstd() {
   unzip -p "$ZIPFILE" "$1" | /tmp/zstd -c -d > "$2"
 }
 
-getVolumeKey() {
-  ui_print "- Press Volume Key [+] 'Yes' [-] 'No'"
-  keyInfo=true
-  while $keyInfo; do
-    keyInfo=$(getevent -qlc 1 | grep KEY_VOLUME)
-    if [ "$keyInfo" == "" ]; then
-      continue
-    else
-      isUpKey=$(echo $keyInfo | grep KEY_VOLUMEUP)
-      [ "$isUpKey" != "" ] && return 0 || return 1
-      break
-    fi
-  done
-}
-
 checkDevice() {
   myDevice=$(getprop ro.product.name)
   romDevice=device_code
