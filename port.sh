@@ -972,12 +972,7 @@ if [[ ${base_rom_code} == "munch" ]];then
     unlock_device_feature "whether backlight bit switch " "bool" "support_backlight_bit_switch"
 fi
 #patch_smali "PowerKeeper.apk" "DisplayFrameSetting.smali" "unicorn" "umi"
-#if [[ ${is_eu_rom} == true ]];then
-#    patch_smali "MiSettings.apk" "NewRefreshRateFragment.smali" "const-string v1, \"btn_preferce_category\"" "const-string v1, \"btn_preferce_category\"\n\n\tconst\/16 p1, 0x1"
 
-#else
-#    patch_smali "MISettings.apk" "NewRefreshRateFragment.smali" "const-string v1, \"btn_preferce_category\"" "const-string v1, \"btn_preferce_category\"\n\n\tconst\/16 p1, 0x1"
-#fi
 # Unlock eyecare mode 
 unlock_device_feature "default rhythmic eyecare mode" "integer" "default_eyecare_mode" "2"
 unlock_device_feature "default texture for paper eyecare" "integer" "paper_eyecare_default_texture" "0"
@@ -1021,15 +1016,6 @@ if [[ -f "${targetMIUIThemeManagerAPK}" ]];then
     python3 bin/patchmethod.py $targetsmali mcp -return true
     java -jar bin/apktool/APKEditor.jar b -i tmp/MIUIThemeManager -o $targetMIUIThemeManagerAPK -f > /dev/null 2>&1
 
-fi
-
-targetSettingsAPK=$(find build/portrom -type f -name "Settings.apk")
-if [[ -f "${targetSettingsAPK}" ]];then
-    cp -rf $targetSettingsAPK tmp/$(basename $targetSettingsAPK).bak
-    java -jar bin/apktool/APKEditor.jar d -i $targetSettingsAPK -o tmp/Settings -f > /dev/null 2>&1
-    targetsmali=$(find tmp/ -type f -path "*/com/android/settings/InternalDeviceUtils.smali")
-    python3 bin/patchmethod.py $targetsmali isAiSupported -return true
-    java -jar bin/apktool/APKEditor.jar b -i tmp/Settings -o $targetSettingsAPK -f > /dev/null 2>&1
 fi
 
 if [[ ${port_rom_code} == "munch_cn" ]];then
