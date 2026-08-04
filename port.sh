@@ -583,6 +583,7 @@ fi
 # 主题防恢复
 if [ -f build/portrom/images/system/system/etc/init/hw/init.rc ];then
 	sed -i '/on boot/a\'$'\n''    chmod 0731 \/data\/system\/theme' build/portrom/images/system/system/etc/init/hw/init.rc
+    echo -e "\n# Fake bootloader state\non init && property:ro.secureboot.devicelock=1\n    setprop ro.secureboot.lockstate locked" >> build/portrom/images/system/system/etc/init/hw/init.rc
 fi
 
 
@@ -603,6 +604,14 @@ if [[ ${is_eu_rom} == true ]];then
 else
     blue "Adding Gboard and Via to product/app" "Copying apps from devices/common/apps to product/app"
     cp -rf devices/common/apps/* build/portrom/images/product/app/ 2>/dev/null || true
+
+    blue "Downloading and installing Kaorios Toolbox"
+    KAORIOS_URL=$(curl -s https://api.github.com/repos/Wuang26/Kaorios-Toolbox/releases/latest | grep browser_download_url | grep "\.apk" | cut -d '"' -f 4)
+    wget -q "$KAORIOS_URL" -O tmp/KaoriosPatcher.apk || true
+    if [ -f tmp/KaoriosPatcher.apk ]; then
+        mkdir -p build/portrom/images/product/app/KaoriosPatcher
+        cp -rf tmp/KaoriosPatcher.apk build/portrom/images/product/app/KaoriosPatcher/KaoriosPatcher.apk
+    fi
 
     yellow "删除多余的App" "Debloating..." 
     # List of apps to be removed
@@ -649,6 +658,15 @@ echo "persist.sys.computility.gpulevel=6" >> build/portrom/images/product/etc/bu
 echo "persist.sys.computility.version=2025" >> build/portrom/images/product/etc/build.prop
 sed -i "s/ro.miui.support.system.app.uninstall.v2=true/#ro.miui.support.system.app.uninstall.v2=true/g" build/portrom/images/product/etc/build.prop || true
 echo "ro.crypto.state=encrypted" >> build/portrom/images/vendor/build.prop
+
+echo "#Fake bootloader state" >> build/portrom/images/product/etc/build.prop
+echo "ro.boot.verifiedbootstate=green" >> build/portrom/images/product/etc/build.prop
+echo "vendor.boot.verifiedbootstate=green" >> build/portrom/images/product/etc/build.prop
+echo "vendor.boot.vbmeta.device_state=locked" >> build/portrom/images/product/etc/build.prop
+echo "ro.boot.veritymode=enforcing" >> build/portrom/images/product/etc/build.prop
+echo "ro.boot.vbmeta.device_state=locked" >> build/portrom/images/product/etc/build.prop
+echo "ro.boot.flash.locked=1" >> build/portrom/images/product/etc/build.prop
+
 echo "persist.sys.usap_pool_enabled=false" >> build/portrom/images/product/etc/build.prop
 echo "persist.sys.dynamic_usap_enabled=false" >> build/portrom/images/product/etc/build.prop
 echo "debug.sf.enable_transaction_tracing=false" >> build/portrom/images/product/etc/build.prop
@@ -714,6 +732,10 @@ for i in $(find build/portrom/images -type f -name "build.prop");do
     sed -i "/ro.miui.density.primaryscale=.*/d" ${i}
     sed -i "/persist.wm.extensions.enabled=true/d" ${i}
 done
+
+if [ -f build/portrom/images/system_ext/etc/cust_prop_white_keys_list ]; then
+    echo "ro.boot.verifiedbootstate" >> build/portrom/images/system_ext/etc/cust_prop_white_keys_list
+fi
 
 #sed -i -e '$a\'$'\n''persist.adb.notify=0' build/portrom/images/system/system/build.prop
 #sed -i -e '$a\'$'\n''persist.sys.usb.config=mtp,adb' build/portrom/images/system/system/build.prop
