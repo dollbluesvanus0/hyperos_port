@@ -540,7 +540,7 @@ if [ $(grep -c "sm8250" "build/portrom/images/vendor/build.prop") -ne 0 ]; then
     fi
 fi
 # props from k60
-echo "persist.vendor.mi_sf.optimize_for_refresh_rate.enable=1" >> build/portrom/images/vendor/build.prop
+#echo "persist.vendor.mi_sf.optimize_for_refresh_rate.enable=1" >> build/portrom/images/vendor/build.prop
 echo "ro.vendor.mi_sf.ultimate.perf.support=true"  >> build/portrom/images/vendor/build.prop
 
 #echo "debug.sf.set_idle_timer_ms=1100" >> build/portrom/images/vendor/build.prop
@@ -548,7 +548,7 @@ echo "ro.vendor.mi_sf.ultimate.perf.support=true"  >> build/portrom/images/vendo
 #echo "ro.surface_flinger.set_touch_timer_ms=200" >> build/portrom/images/vendor/build.prop
 
 # https://source.android.com/docs/core/graphics/multiple-refresh-rate
-echo "ro.surface_flinger.use_content_detection_for_refresh_rate=false" >> build/portrom/images/vendor/build.prop
+#echo "ro.surface_flinger.use_content_detection_for_refresh_rate=false" >> build/portrom/images/vendor/build.prop
 echo "ro.surface_flinger.set_touch_timer_ms=0" >> build/portrom/images/vendor/build.prop
 echo "ro.surface_flinger.set_idle_timer_ms=0" >> build/portrom/images/vendor/build.prop
 
