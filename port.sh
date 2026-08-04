@@ -591,6 +591,9 @@ else
         pushd tmp/fw_patcher > /dev/null
         export TOOLS_DIR="$(pwd)/../bin/apktool"
 
+        # Set dummy d8 to skip optimization as we might not have it in path
+        export D8_CMD="true"
+
         # Determine port_rom_version for naming (fallback if unset)
         local_port_version=${port_rom_version:-"unknown"}
 
@@ -604,18 +607,63 @@ else
             blue "Framework and miui-services patched successfully"
 
             # Install Kaorios Toolbox APK and permissions
-            mkdir -p build/portrom/images/system/system/priv-app/KaoriosToolbox
-            cp tmp/fw_patcher/kaorios_toolbox/KaoriosToolbox.apk build/portrom/images/system/system/priv-app/KaoriosToolbox/
-            mkdir -p build/portrom/images/system/system/priv-app/KaoriosToolbox/lib
-            unzip -q tmp/fw_patcher/kaorios_toolbox/KaoriosToolbox.apk "lib/*" -d build/portrom/images/system/system/priv-app/KaoriosToolbox/ || true
+            priv_app_dir=$(find build/portrom/images/product build/portrom/images/system/system build/portrom/images/system_ext -type d -name "priv-app" 2>/dev/null | head -n 1)
+            if [[ -n "$priv_app_dir" ]]; then
+                mkdir -p "$priv_app_dir/KaoriosToolbox"
+                cp tmp/fw_patcher/kaorios_toolbox/KaoriosToolbox.apk "$priv_app_dir/KaoriosToolbox/"
+                mkdir -p "$priv_app_dir/KaoriosToolbox/lib"
+                unzip -q tmp/fw_patcher/kaorios_toolbox/KaoriosToolbox.apk "lib/*" -d "$priv_app_dir/KaoriosToolbox/" || true
+            else
+                mkdir -p build/portrom/images/system/system/priv-app/KaoriosToolbox
+                cp tmp/fw_patcher/kaorios_toolbox/KaoriosToolbox.apk build/portrom/images/system/system/priv-app/KaoriosToolbox/
+                mkdir -p build/portrom/images/system/system/priv-app/KaoriosToolbox/lib
+                unzip -q tmp/fw_patcher/kaorios_toolbox/KaoriosToolbox.apk "lib/*" -d build/portrom/images/system/system/priv-app/KaoriosToolbox/ || true
+            fi
 
-            mkdir -p build/portrom/images/system/system/etc/permissions
-            cp tmp/fw_patcher/kaorios_toolbox/privapp_whitelist_com.kousei.kaorios.xml build/portrom/images/system/system/etc/permissions/
+            permissions_dir=$(find build/portrom/images/product build/portrom/images/system/system build/portrom/images/system_ext -type d -name "permissions" 2>/dev/null | grep "etc/permissions" | head -n 1)
+            if [[ -n "$permissions_dir" ]]; then
+                cp tmp/fw_patcher/kaorios_toolbox/privapp_whitelist_com.kousei.kaorios.xml "$permissions_dir/"
+            else
+                mkdir -p build/portrom/images/system/system/etc/permissions
+                cp tmp/fw_patcher/kaorios_toolbox/privapp_whitelist_com.kousei.kaorios.xml build/portrom/images/system/system/etc/permissions/
+            fi
 
             echo "" >> build/portrom/images/system/system/build.prop
             echo "# Kaorios Toolbox" >> build/portrom/images/system/system/build.prop
             echo "persist.sys.kaorios=kousei" >> build/portrom/images/system/system/build.prop
             echo "ro.control_privapp_permissions=" >> build/portrom/images/system/system/build.prop
+
+            # Additional spoofing and permissions for Kaorios Toolbox
+            cust_prop_list=$(find build/portrom/images -type f -name "cust_prop_white_keys_list" | head -n 1)
+            if [[ -z "$cust_prop_list" ]]; then
+                mkdir -p build/portrom/images/system_ext/etc
+                cust_prop_list="build/portrom/images/system_ext/etc/cust_prop_white_keys_list"
+                touch "$cust_prop_list"
+            fi
+
+            if [[ -f "$cust_prop_list" ]]; then
+                if ! grep -q "ro.boot.verifiedbootstate" "$cust_prop_list"; then
+                    echo "ro.boot.verifiedbootstate" >> "$cust_prop_list"
+                fi
+                if ! grep -q "ro.boot.flash.locked" "$cust_prop_list"; then
+                    echo "ro.boot.flash.locked" >> "$cust_prop_list"
+                fi
+                if ! grep -q "ro.boot.vbmeta.device_state" "$cust_prop_list"; then
+                    echo "ro.boot.vbmeta.device_state" >> "$cust_prop_list"
+                fi
+            fi
+
+            product_build_prop=$(find build/portrom/images/product -type f -name "build.prop" | head -n 1)
+            if [[ -f "$product_build_prop" ]]; then
+                echo "# Fake bootloader state for Kaorios" >> "$product_build_prop"
+                echo "ro.boot.verifiedbootstate=green" >> "$product_build_prop"
+                echo "vendor.boot.verifiedbootstate=green" >> "$product_build_prop"
+                echo "vendor.boot.vbmeta.device_state=locked" >> "$product_build_prop"
+                echo "ro.boot.veritymode=enforcing" >> "$product_build_prop"
+                echo "ro.boot.vbmeta.device_state=locked" >> "$product_build_prop"
+                echo "ro.boot.flash.locked=1" >> "$product_build_prop"
+            fi
+
             blue "Kaorios Toolbox installed successfully"
         else
             red "FrameworkPatcher failed to generate patched JARs"
