@@ -589,10 +589,7 @@ else
         cp "$MIUI_SERVICES_JAR" tmp/fw_patcher/
 
         pushd tmp/fw_patcher > /dev/null
-        export TOOLS_DIR="$(pwd)/../bin/apktool"
-
-        # Set dummy d8 to skip optimization as we might not have it in path
-        export D8_CMD="true"
+        export TOOLS_DIR="$(pwd)/../../bin/apktool"
 
         # Determine port_rom_version for naming (fallback if unset)
         local_port_version=${port_rom_version:-"unknown"}
