@@ -444,10 +444,10 @@ if [[ -f "${targetAospFrameworkResOverlay}" ]]; then
     if [[ ! -d tmp ]]; then
      mkdir tmp
     fi
-    #filename=$(basename $targetAospFrameworkResOverlay)
-    #yellow "Change defaultPeakRefreshRate: $filename ..."
-    #targetDir=$(echo "$filename" | sed 's/\..*$//')
-    #bin/apktool/apktool d $targetAospFrameworkResOverlay -o tmp/$targetDir -f > /dev/null 2>&1
+    filename=$(basename $targetAospFrameworkResOverlay)
+    yellow "Change defaultPeakRefreshRate: $filename ..."
+    targetDir=$(echo "$filename" | sed 's/\..*$//')
+    bin/apktool/apktool d $targetAospFrameworkResOverlay -o tmp/$targetDir -f > /dev/null 2>&1
 
     #for xml in $(find tmp/$targetDir -type f -name "integers.xml");do
         # magic: Change DefaultPeakRefrshRate to 60 
@@ -514,7 +514,7 @@ if [ $(grep -c "sm8250" "build/portrom/images/vendor/build.prop") -ne 0 ]; then
     ## Fix the drop frame issus
     echo "ro.surface_flinger.enable_frame_rate_override=false" >> build/portrom/images/vendor/build.prop
     echo "ro.vendor.display.mode_change_optimize.enable=true" >> build/portrom/images/vendor/build.prop
-   if [[ $port_android_version == "15" ]];then
+   if [[ $port_android_version == "15" || $port_android_version == "16" ]];then
           {
             echo " ro.miui.affinity.sfui=4-7"
             echo "ro.miui.affinity.sfre=4-7" 
@@ -984,7 +984,7 @@ unlock_device_feature "default texture for paper eyecare" "integer" "paper_eyeca
 
 # Unlock Celluar Sharing feature
     targetFrameworkExtRes=$(find build/portrom/images/system_ext -type f -name "framework-ext-res.apk")
-if [[ -f "${targetFrameworkExtRes}" ]] && [[ ${port_android_version} != "15" ]]; then
+if [[ -f "${targetFrameworkExtRes}" ]] && [[ ${port_android_version} != "15" ]] && [[ ${port_android_version} != "16" ]]; then
     mkdir tmp/  > /dev/null 2>&1 
     java -jar bin/apktool/APKEditor.jar d -i $targetFrameworkExtRes -o tmp/framework-ext-res -f > /dev/null 2>&1
     if grep -r config_celluar_shared_support tmp/framework-ext-res/ ; then  
@@ -1021,15 +1021,6 @@ if [[ -f "${targetMIUIThemeManagerAPK}" ]];then
     python3 bin/patchmethod.py $targetsmali mcp -return true
     java -jar bin/apktool/APKEditor.jar b -i tmp/MIUIThemeManager -o $targetMIUIThemeManagerAPK -f > /dev/null 2>&1
 
-fi
-
-targetSettingsAPK=$(find build/portrom -type f -name "Settings.apk")
-if [[ -f "${targetSettingsAPK}" ]];then
-    cp -rf $targetSettingsAPK tmp/$(basename $targetSettingsAPK).bak
-    java -jar bin/apktool/APKEditor.jar d -i $targetSettingsAPK -o tmp/Settings -f > /dev/null 2>&1
-    targetsmali=$(find tmp/ -type f -path "*/com/android/settings/InternalDeviceUtils.smali")
-    python3 bin/patchmethod.py $targetsmali isAiSupported -return true
-    java -jar bin/apktool/APKEditor.jar b -i tmp/Settings -o $targetSettingsAPK -f > /dev/null 2>&1
 fi
 
 if [[ ${port_rom_code} == "munch_cn" ]];then
@@ -1081,11 +1072,11 @@ if [[ -d "devices/common" ]];then
     elif [[ $nfc_fix_type == "a14" ]]; then
         unzip -oq devices/common/nfc_a14.zip -d build/portrom/images/
         echo "ro.vendor.nfc.dispatch_optim=1" >> build/portrom/images/vendor/build.prop
-    elif [[ ${port_android_version} == "15" ]]; then
+    elif [[ ${port_android_version} == "15" || ${port_android_version} == "16" ]]; then
         unzip -oq devices/common/nfc_a15.zip -d build/portrom/images/
         echo "ro.vendor.nfc.dispatch_optim=1" >> build/portrom/images/vendor/build.prop
     fi
-    if [[ $base_rom_code == "munch" ]] && [[ ${port_android_version} == "15" ]]; then
+    if [[ $base_rom_code == "munch" ]] && [[ ${port_android_version} == "15" || ${port_android_version} == "16" ]]; then
         sourceCamera=$(find build/baserom/images/ -type f -name "MiuiCamera.apk")
         targetCamera=$(find build/portrom/images/ -type d -name "MiuiCamera")
         cp -rf $sourceCamera $targetCamera/
@@ -1262,8 +1253,8 @@ else
                 else
                     error "以 [${pack_type}] 文件系统打包 [${pname}] 分区失败" "Faield to pack [${pname}]"
                     exit 1
-    fi
-done
+                fi
+    done
 fi
 rm fstype.txt
 os_type="hyperos"
@@ -1559,7 +1550,7 @@ else
             fi
         done
     fi
-    fi
+fi
 
     #disable vbmeta
     for img in $(find out/${os_type}_${device_code}_${port_rom_version}/firmware-update -type f -name "vbmeta*.img");do
@@ -1637,4 +1628,5 @@ mv out/${os_type}_${device_code}_${port_rom_version}.zip out/${os_type}_${device
 green "移植完毕" "Porting completed"    
 green "输出包路径：" "Output: "
 green "$(pwd)/out/${os_type}_${device_code}_${port_rom_version}_${hash}_${port_android_version}_${port_rom_code}_${pack_timestamp}_${pack_type}.zip"
+fi
 fi
