@@ -514,7 +514,7 @@ if [ $(grep -c "sm8250" "build/portrom/images/vendor/build.prop") -ne 0 ]; then
     ## Fix the drop frame issus
     echo "ro.surface_flinger.enable_frame_rate_override=false" >> build/portrom/images/vendor/build.prop
     echo "ro.vendor.display.mode_change_optimize.enable=true" >> build/portrom/images/vendor/build.prop
-   if [[ $port_android_version == "15" || $port_android_version == "16" ]];then
+   if [[ $port_android_version == "15" || $port_android_version == "16" ]]; then
           {
             echo " ro.miui.affinity.sfui=4-7"
             echo "ro.miui.affinity.sfre=4-7" 
@@ -979,28 +979,28 @@ fi
 #    patch_smali "MISettings.apk" "NewRefreshRateFragment.smali" "const-string v1, \"btn_preferce_category\"" "const-string v1, \"btn_preferce_category\"\n\n\tconst\/16 p1, 0x1"
 #fi
 # Unlock eyecare mode 
-unlock_device_feature "default rhythmic eyecare mode" "integer" "default_eyecare_mode" "2"
-unlock_device_feature "default texture for paper eyecare" "integer" "paper_eyecare_default_texture" "0"
+#unlock_device_feature "default rhythmic eyecare mode" "integer" "default_eyecare_mode" "2"
+#unlock_device_feature "default texture for paper eyecare" "integer" "paper_eyecare_default_texture" "0"
 
 # Unlock Celluar Sharing feature
-    targetFrameworkExtRes=$(find build/portrom/images/system_ext -type f -name "framework-ext-res.apk")
-if [[ -f "${targetFrameworkExtRes}" ]] && [[ ${port_android_version} != "15" ]] && [[ ${port_android_version} != "16" ]]; then
-    mkdir tmp/  > /dev/null 2>&1 
-    java -jar bin/apktool/APKEditor.jar d -i $targetFrameworkExtRes -o tmp/framework-ext-res -f > /dev/null 2>&1
-    if grep -r config_celluar_shared_support tmp/framework-ext-res/ ; then  
-        
-        yellow "开启通信共享功能" "Enable Celluar Sharing feature"
-        
-        for xml in $(find tmp/framework-ext-res -name "*.xml");do
-            sed -i 's|<bool name="config_celluar_shared_support">false</bool>|<bool name="config_celluar_shared_support">true</bool>|g' "$xml"
-
-        done
-        #rm -rf tmp
-    fi
-    filename=$(basename $targetFrameworkExtRes)
-    java -jar bin/apktool/APKEditor.jar b -i tmp/framework-ext-res -o tmp/$filename -f> /dev/null 2>&1 || error "apktool 打包失败" "apktool mod failed"
-        cp -rf tmp/$filename $targetFrameworkExtRes
-fi
+#    targetFrameworkExtRes=$(find build/portrom/images/system_ext -type f -name "framework-ext-res.apk")
+#if [[ -f "${targetFrameworkExtRes}" ]] && [[ ${port_android_version} != "15" ]]; then
+#    mkdir tmp/  > /dev/null 2>&1 
+#    java -jar bin/apktool/APKEditor.jar d -i $targetFrameworkExtRes -o tmp/framework-ext-res -f > /dev/null 2>&1
+#    if grep -r config_celluar_shared_support tmp/framework-ext-res/ ; then  
+#        
+#        yellow "开启通信共享功能" "Enable Celluar Sharing feature"
+#        
+#        for xml in $(find tmp/framework-ext-res -name "*.xml");do
+#            sed -i 's|<bool name="config_celluar_shared_support">false</bool>|<bool name="config_celluar_shared_support">true</bool>|g' "$xml"
+#
+#        done
+#        #rm -rf tmp
+#    fi
+#    filename=$(basename $targetFrameworkExtRes)
+#    java -jar bin/apktool/APKEditor.jar b -i tmp/framework-ext-res -o tmp/$filename -f> /dev/null 2>&1 || error "apktool 打包失败" "apktool mod failed"
+#        cp -rf tmp/$filename $targetFrameworkExtRes
+#fi
 
 targetMiLinkOS2APK=$(find build/portrom -type f -name "MiLinkOS2CN.apk")
 if [[ -f "${targetMiLinkOS2APK}" ]];then
@@ -1022,6 +1022,15 @@ if [[ -f "${targetMIUIThemeManagerAPK}" ]];then
     java -jar bin/apktool/APKEditor.jar b -i tmp/MIUIThemeManager -o $targetMIUIThemeManagerAPK -f > /dev/null 2>&1
 
 fi
+
+#targetSettingsAPK=$(find build/portrom -type f -name "Settings.apk")
+#if [[ -f "${targetSettingsAPK}" ]];then
+    #cp -rf $targetSettingsAPK tmp/$(basename $targetSettingsAPK).bak
+    #java -jar bin/apktool/APKEditor.jar d -i $targetSettingsAPK -o tmp/Settings -f > /dev/null 2>&1
+    #targetsmali=$(find tmp/ -type f -path "*/com/android/settings/InternalDeviceUtils.smali")
+    #python3 bin/patchmethod.py $targetsmali isAiSupported -return true
+    #java -jar bin/apktool/APKEditor.jar b -i tmp/Settings -o $targetSettingsAPK -f > /dev/null 2>&1
+#fi
 
 if [[ ${port_rom_code} == "munch_cn" ]];then
     # Add missing camera permission android.permission.TURN_SCREEN_ON
