@@ -436,36 +436,6 @@ else
     fi
 fi
 
-# Fix boot up frame drop issue. 
-targetAospFrameworkResOverlay=$(find build/portrom/images/product -type f -name "AospFrameworkResOverlay.apk")
-
-if [[ -f "${targetAospFrameworkResOverlay}" ]]; then
-    
-    if [[ ! -d tmp ]]; then
-     mkdir tmp
-    fi
-    filename=$(basename $targetAospFrameworkResOverlay)
-    yellow "Change defaultPeakRefreshRate: $filename ..."
-    targetDir=$(echo "$filename" | sed 's/\..*$//')
-    bin/apktool/apktool d $targetAospFrameworkResOverlay -o tmp/$targetDir -f > /dev/null 2>&1
-
-    #for xml in $(find tmp/$targetDir -type f -name "integers.xml");do
-        # magic: Change DefaultPeakRefrshRate to 60 
-        #xmlstarlet ed -L -u "//integer[@name='config_defaultPeakRefreshRate']/text()" -v 120 $xml
-    #done
-    if [[ $port_android_version == "15" || $port_android_version == "16" ]]; then
-        blue "Fix VanillaIceCream brightness" 
-        for xml in $(find tmp/$targetDir -type f -name "*.xml");do
-            sed -i "s/config_screenBrightnessDim\"/config_screenBrightnessDim_hyper\"/g" $xml
-            sed -i "s/config_screenBrightnessSettingDefault\"/config_screenBrightnessSettingDefault_hyper\"/g" $xml
-            sed -i "s/config_screenBrightnessSettingMaximum\"/config_screenBrightnessSettingMaximum_hyper\"/g" $xml
-            sed -i "s/config_screenBrightnessSettingMinimum\"/config_screenBrightnessSettingMinimum_hyper\"/g" $xml 
-        done 
-    fi
-    bin/apktool/apktool b tmp/$targetDir -o tmp/$filename > /dev/null 2>&1 || error "apktool 打包失败" "apktool mod failed"
-    cp -rf tmp/$filename $targetAospFrameworkResOverlay
-fi
-
 # 修复AOD问题
 targetDevicesAndroidOverlay=$(find build/portrom/images/product -type f -name "DevicesAndroidOverlay.apk")
 if [[ -f "${targetDevicesAndroidOverlay}" ]]; then
