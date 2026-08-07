@@ -436,54 +436,6 @@ else
     fi
 fi
 
-# Fix boot up frame drop issue. 
-targetAospFrameworkResOverlay=$(find build/portrom/images/product -type f -name "AospFrameworkResOverlay.apk")
-
-if [[ -f "${targetAospFrameworkResOverlay}" ]]; then
-    
-    if [[ ! -d tmp ]]; then
-     mkdir tmp
-    fi
-    filename=$(basename $targetAospFrameworkResOverlay)
-    yellow "Change defaultPeakRefreshRate: $filename ..."
-    targetDir=$(echo "$filename" | sed 's/\..*$//')
-    bin/apktool/apktool d $targetAospFrameworkResOverlay -o tmp/$targetDir -f > /dev/null 2>&1
-
-    #for xml in $(find tmp/$targetDir -type f -name "integers.xml");do
-        # magic: Change DefaultPeakRefrshRate to 60 
-        #xmlstarlet ed -L -u "//integer[@name='config_defaultPeakRefreshRate']/text()" -v 120 $xml
-    #done
-    if [[ $port_android_version == "15" || $port_android_version == "16" ]]; then
-        blue "Fix VanillaIceCream brightness" 
-        for xml in $(find tmp/$targetDir -type f -name "*.xml");do
-            sed -i "s/config_screenBrightnessDim\"/config_screenBrightnessDim_hyper\"/g" $xml
-            sed -i "s/config_screenBrightnessSettingDefault\"/config_screenBrightnessSettingDefault_hyper\"/g" $xml
-            sed -i "s/config_screenBrightnessSettingMaximum\"/config_screenBrightnessSettingMaximum_hyper\"/g" $xml
-            sed -i "s/config_screenBrightnessSettingMinimum\"/config_screenBrightnessSettingMinimum_hyper\"/g" $xml 
-        done 
-    fi
-    bin/apktool/apktool b tmp/$targetDir -o tmp/$filename > /dev/null 2>&1 || error "apktool 打包失败" "apktool mod failed"
-    cp -rf tmp/$filename $targetAospFrameworkResOverlay
-fi
-
-# 修复AOD问题
-targetDevicesAndroidOverlay=$(find build/portrom/images/product -type f -name "DevicesAndroidOverlay.apk")
-if [[ -f "${targetDevicesAndroidOverlay}" ]]; then
-    mkdir tmp/  
-    filename=$(basename $targetDevicesAndroidOverlay)
-    yellow "修复息屏和屏下指纹问题" "Fixing AOD issue: $filename ..."
-    targetDir=$(echo "$filename" | sed 's/\..*$//')
-    bin/apktool/apktool d $targetDevicesAndroidOverlay -o tmp/$targetDir -f > /dev/null 2>&1
-    search_pattern="com\.miui\.aod\/com\.miui\.aod\.doze\.DozeService"
-    replacement_pattern="com\.android\.systemui\/com\.android\.systemui\.doze\.DozeService"
-    for xml in $(find tmp/$targetDir -type f -name "*.xml");do
-        sed -i "s/$search_pattern/$replacement_pattern/g" $xml
-    done
-    bin/apktool/apktool b tmp/$targetDir -o tmp/$filename > /dev/null 2>&1 || error "apktool 打包失败" "apktool mod failed"
-    cp -rf tmp/$filename $targetDevicesAndroidOverlay
-    rm -rf tmp
-fi
-
 sourceMiuiFrameworkTelephonyResOverlay=$(find build/baserom/images/product -type f -name "MiuiFrameworkTelephonyResOverlay.apk")
 targetMiuiFrameworkTelephonyResOverlay=$(find build/portrom/images/product -type f -name "MiuiFrameworkTelephonyResOverlay.apk")
 if [ -f "${sourceMiuiFrameworkTelephonyResOverlay}" ] && [ -f "${targetMiuiFrameworkTelephonyResOverlay}" ];then
@@ -1001,27 +953,6 @@ fi
 #    java -jar bin/apktool/APKEditor.jar b -i tmp/framework-ext-res -o tmp/$filename -f> /dev/null 2>&1 || error "apktool 打包失败" "apktool mod failed"
 #        cp -rf tmp/$filename $targetFrameworkExtRes
 #fi
-
-targetMiLinkOS2APK=$(find build/portrom -type f -name "MiLinkOS2CN.apk")
-if [[ -f "${targetMiLinkOS2APK}" ]];then
-    cp -rf $targetMiLinkOS2APK tmp/$(basename $targetMiLinkOS2APK).bak
-    java -jar bin/apktool/APKEditor.jar d -i $targetMiLinkOS2APK -o tmp/MiLinkOS2 -f > /dev/null 2>&1
-    targetsmali=$(find tmp/MiLinkOS2 -name "HMindManager.smali")
-    python3 bin/patchmethod.py -d tmp/MiLinkOS2 -k "isSupportCapability() context == null" -return true
-    python3 bin/patchmethod.py $targetsmali J -return true
-    java -jar bin/apktool/APKEditor.jar b -i tmp/MiLinkOS2 -o $targetMiLinkOS2APK -f > /dev/null 2>&1
-
-fi
-
-targetMIUIThemeManagerAPK=$(find build/portrom -type f -name "MIUIThemeManager.apk")
-if [[ -f "${targetMIUIThemeManagerAPK}" ]];then
-    cp -rf $targetMIUIThemeManagerAPK tmp/$(basename $targetMIUIThemeManagerAPK).bak
-    java -jar bin/apktool/APKEditor.jar d -i $targetMIUIThemeManagerAPK -o tmp/MIUIThemeManager -f > /dev/null 2>&1
-    targetsmali=$(find tmp/ -name "o1t.smali" -path "*/basemodule/utils/*")
-    python3 bin/patchmethod.py $targetsmali mcp -return true
-    java -jar bin/apktool/APKEditor.jar b -i tmp/MIUIThemeManager -o $targetMIUIThemeManagerAPK -f > /dev/null 2>&1
-
-fi
 
 #targetSettingsAPK=$(find build/portrom -type f -name "Settings.apk")
 #if [[ -f "${targetSettingsAPK}" ]];then
