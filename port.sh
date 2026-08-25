@@ -51,6 +51,8 @@ repackext4=$(grep "repack_with_ext4" bin/port_config |cut -d '=' -f 2)
 pack_method=$(grep "pack_method" bin/port_config | cut -d '=' -f 2)
 nfc_fix_type=$(grep "nfc_fix_type" bin/port_config |cut -d '=' -f 2)
 force_adb=$(grep "force_enable_adb" bin/port_config |cut -d '=' -f 2)
+selinux_permissive=$(grep "selinux_permissive" bin/port_config |cut -d '=' -f 2)
+patch_jars=$(grep "patch_framework_jars" bin/port_config |cut -d '=' -f 2)
 if [[ ${repackext4} == true ]]; then
     pack_type=EXT
 fi
@@ -588,6 +590,9 @@ else
     blue "File $targetVintf not found."
 fi
 
+# Jar patching (signature bypass / Kaorios) is optional: a broken jar rebuild
+# is a guaranteed endless boot animation. See patch_framework_jars in port_config.
+if [[ "${patch_jars}" == "true" ]]; then
 if [[ ${is_eu_rom} == "true" ]];then
     patch_smali "miui-services.jar" "SystemServerImpl.smali" ".method public constructor <init>()V/,/.end method" ".method public constructor <init>()V\n\t.registers 1\n\tinvoke-direct {p0}, Lcom\/android\/server\/SystemServerStub;-><init>()V\n\n\treturn-void\n.end method" "regex"
 else 
@@ -625,10 +630,19 @@ else
 
         popd > /dev/null
 
-        if [[ -f tmp/fw_patcher/framework_patched.jar ]] && [[ -f tmp/fw_patcher/miui-services_patched.jar ]]; then
+        if [[ -f tmp/fw_patcher/framework_patched.jar ]] && [[ -f tmp/fw_patcher/miui-services_patched.jar ]] \
+           && jar_has_valid_dex tmp/fw_patcher/framework_patched.jar && jar_has_valid_dex tmp/fw_patcher/miui-services_patched.jar; then
+            cp -f "$FW_JAR" "$FW_JAR.bak"
+            cp -f "$MIUI_SERVICES_JAR" "$MIUI_SERVICES_JAR.bak"
             cp tmp/fw_patcher/framework_patched.jar "$FW_JAR"
             cp tmp/fw_patcher/miui-services_patched.jar "$MIUI_SERVICES_JAR"
-            blue "Framework and miui-services patched successfully"
+            if ! jar_has_valid_dex "$FW_JAR" || ! jar_has_valid_dex "$MIUI_SERVICES_JAR"; then
+                red "Пропатченные jar повреждены, откат к оригиналам" "Patched jars are broken, restoring originals"
+                cp -f "$FW_JAR.bak" "$FW_JAR"
+                cp -f "$MIUI_SERVICES_JAR.bak" "$MIUI_SERVICES_JAR"
+            else
+                blue "Framework and miui-services patched successfully"
+            fi
 
             # Install Kaorios Toolbox APK and permissions
             priv_app_dir=$(find build/portrom/images/product build/portrom/images/system/system build/portrom/images/system_ext -type d -name "priv-app" 2>/dev/null | head -n 1)
@@ -740,7 +754,8 @@ else
     #java -jar bin/apktool/APKEditor.jar b -f -i tmp/services -o tmp/services_patched.jar > /dev/null 2>&1
     #cp -rf tmp/services_patched.jar build/portrom/images/system/system/framework/services.jar
     
-#fi
+fi
+fi
 
 # 主题防恢复
 if [ -f build/portrom/images/system/system/etc/init/hw/init.rc ];then
@@ -1758,6 +1773,35 @@ else
     sed -i "s/device_code/${base_rom_code}/g" out/${os_type}_${device_code}_${port_rom_version}/windows_flash_script.bat
     busybox unix2dos out/${os_type}_${device_code}_${port_rom_version}/windows_flash_script.bat
 
+# Optional: append androidboot.selinux=permissive to every packaged boot image
+# so an old vendor's avc denials stop killing services during port debugging.
+if [[ "${selinux_permissive}" == "true" ]]; then
+    blue "Перевожу SELinux в permissive в boot-образах" "Patching boot images with androidboot.selinux=permissive"
+    mkdir -p tmp/cmdline_patch
+    pushd tmp/cmdline_patch >/dev/null || exit
+    for bimg in ${work_dir}/out/${os_type}_${device_code}_${port_rom_version}/boot*.img; do
+        [ -f "$bimg" ] || continue
+        rm -f header kernel ramdisk.cpio dtb new_boot.img
+        if ! magiskboot unpack -h "$bimg" >/dev/null 2>&1; then
+            yellow "Не удалось распаковать $(basename "$bimg")" "Failed to unpack $(basename "$bimg")"
+            continue
+        fi
+        if grep -q "androidboot.selinux=permissive" header 2>/dev/null; then
+            yellow "$(basename "$bimg"): уже permissive" "$(basename "$bimg"): already permissive"
+        else
+            sed -i 's/^cmdline=/cmdline=androidboot.selinux=permissive /' header
+        fi
+        if magiskboot repack "$bimg" new_boot.img >/dev/null 2>&1; then
+            mv -f new_boot.img "$bimg"
+            green "$(basename "$bimg"): SELinux permissive применён" "$(basename "$bimg"): SELinux permissive applied"
+        else
+            red "repack не удался для $(basename "$bimg")" "repack failed for $(basename "$bimg")"
+        fi
+    done
+    popd >/dev/null || exit
+    rm -rf tmp/cmdline_patch
+fi
+
 find out/${os_type}_${device_code}_${port_rom_version} |xargs touch
 pushd out/${os_type}_${device_code}_${port_rom_version}/ >/dev/null || exit
 zip -r ${os_type}_${device_code}_${port_rom_version}.zip ./*
@@ -1773,5 +1817,4 @@ mv out/${os_type}_${device_code}_${port_rom_version}.zip out/${os_type}_${device
 green "移植完毕" "Porting completed"    
 green "输出包路径：" "Output: "
 green "$(pwd)/out/${os_type}_${device_code}_${port_rom_version}_${hash}_${port_android_version}_${port_rom_code}_${pack_timestamp}_${pack_type}.zip"
-fi
 fi

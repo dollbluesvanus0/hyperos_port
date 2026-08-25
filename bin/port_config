@@ -23,3 +23,18 @@ pack_method=aosp
 # Force enable ADB and root debugging in the ported ROM (handy to debug bootloops).
 # WARNING: ro.adb.secure=0 disables the PC authorization prompt - debugging only!
 force_enable_adb=true
+
+# SELinux permissive в boot-образах сборки (androidboot.selinux=permissive).
+# Для отладки портов со старым vendor: система перестаёт падать от avc-denials,
+# adb/logcat доступны для диагностики. ВНИМАНИЕ: ослабляет безопасность!
+# Force SELinux permissive in the packaged boot images (debug aid): old-vendor
+# avc denials stop killing services. WARNING: weakens security!
+selinux_permissive=false
+
+# Патчить framework.jar / miui-services.jar / services.jar (обход проверки
+# подписи APK, Kaorios Toolbox). ВНИМАНИЕ: пересборка jar сторонними тулами
+# может давать битый dex -> вечная загрузка на анимации. По умолчанию ВЫКЛ.
+# Patch framework/miui-services/services jars (APK signature bypass +
+# Kaorios Toolbox). WARNING: third-party jar rebuilds can produce broken dex
+# -> endless boot animation. Disabled by default.
+patch_framework_jars=false

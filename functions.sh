@@ -241,6 +241,18 @@ disable_avb_verify() {
     fi
 }
 
+# Check that a jar actually contains loadable dex bytecode (classes.dex /
+# classes2.dex starting with the dex magic). Guards against broken jar
+# rebuilds that would crash zygote at boot.
+jar_has_valid_dex() {
+    local j="$1" d=""
+    [ -f "$j" ] || return 1
+    d=$(unzip -p "$j" classes.dex 2>/dev/null | head -c 4)
+    [ "${d:0:3}" = "dex" ] && return 0
+    d=$(unzip -p "$j" classes2.dex 2>/dev/null | head -c 4)
+    [ "${d:0:3}" = "dex" ]
+}
+
 # Fallback: disable the APK signature scheme enforcement inside services.jar.
 # Used on Android 14+ ports when the external FrameworkPatcher is unavailable or fails,
 # otherwise replaced/patched system apps fail to install and the ROM never finishes booting.
@@ -280,9 +292,12 @@ bypass_apk_signature_check() {
     done < <(find tmp/services/smali/*/com/android/server/pm/ tmp/services/smali/*/com/android/server/pm/pkg/parsing/ -maxdepth 1 -type f -name "*.smali" -exec grep -H "$target_method" {} \; 2>/dev/null | cut -d ':' -f 1)
 
     java -jar bin/apktool/APKEditor.jar b -f -i tmp/services -o tmp/services_patched.jar > /dev/null 2>&1
-    if [ -f tmp/services_patched.jar ]; then
+    if [ -f tmp/services_patched.jar ] && jar_has_valid_dex tmp/services_patched.jar; then
+        cp -f build/portrom/images/system/system/framework/services.jar build/portrom/images/system/system/framework/services.jar.bak
         cp -rf tmp/services_patched.jar build/portrom/images/system/system/framework/services.jar
         green "APK 签名校验已移除" "APK signature verifier disabled successfully"
+    elif [ -f tmp/services_patched.jar ]; then
+        red "Пересобранный services.jar содержит битый dex, откат к оригиналу" "Rebuilt services.jar has broken dex, keeping original"
     else
         error "services.jar 重打包失败" "Failed to rebuild services.jar"
     fi
