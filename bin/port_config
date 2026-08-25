@@ -15,3 +15,9 @@ remove_data_encryption=false
 
 # Packing Rom with Payload.bin/new.dat.br type or super.img
 pack_method=aosp
+
+# Принудительно включить ADB и root-отладку в порте (для отладки бутлупов).
+# ВНИМАНИЕ: ro.adb.secure=0 отключает запрос авторизации ПК - только для отладки!
+# Force enable ADB and root debugging in the ported ROM (handy to debug bootloops).
+# WARNING: ro.adb.secure=0 disables the PC authorization prompt - debugging only!
+force_enable_adb=true

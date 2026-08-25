@@ -152,6 +152,13 @@ ui_print "- Clearing cache..."
 rm -rf /data/dalvik-cache/arm/*
 rm -rf /data/dalvik-cache/arm64/*
 rm -rf /data/system/package_cache/*
+# Remove stale decompressed APEXes left by the previous ROM. PackageManager
+# scans /data/apex/decompressed at boot; parsing an old incompatible apex
+# throws IllegalStateException inside system_server and crash-loops the ROM
+# (endless boot animation).
+rm -rf /data/apex/decompressed/*
+rm -rf /data/apex/sessions/*
+rm -rf /data/misc/apexdata/com.android.runtime/*
 ui_print " "
 ui_print "- Flashing process completed successfully."
 ui_print " "

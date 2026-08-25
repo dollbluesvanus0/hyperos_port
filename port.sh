@@ -50,6 +50,7 @@ port_partition=$(grep "partition_to_port" bin/port_config |cut -d '=' -f 2)
 repackext4=$(grep "repack_with_ext4" bin/port_config |cut -d '=' -f 2)
 pack_method=$(grep "pack_method" bin/port_config | cut -d '=' -f 2)
 nfc_fix_type=$(grep "nfc_fix_type" bin/port_config |cut -d '=' -f 2)
+force_adb=$(grep "force_enable_adb" bin/port_config |cut -d '=' -f 2)
 if [[ ${repackext4} == true ]]; then
     pack_type=EXT
 fi
@@ -806,6 +807,30 @@ blue "正在修改 build.prop" "Modifying build.prop"
 sed -i "s/ro.control_privapp_permissions=.*/ro.control_privapp_permissions=disable/g" build/portrom/images/vendor/build.prop || true
 grep -q "^ro.control_privapp_permissions=" build/portrom/images/vendor/build.prop || echo "ro.control_privapp_permissions=disable" >> build/portrom/images/vendor/build.prop
 sed -i "/persist.sys.enhance_vkpipelinecache.enable=/d" build/portrom/images/product/etc/build.prop || true
+# Force enable ADB and debugging (optional, see force_enable_adb in bin/port_config).
+# Makes adbd available from early boot even when system_server crash-loops.
+if [[ "${force_adb}" == "true" ]]; then
+    blue "Принудительно включаю ADB в vendor/build.prop" "Force enabling ADB in vendor/build.prop"
+    adb_vprop="build/portrom/images/vendor/build.prop"
+    # Drop any existing definitions first so ours win
+    sed -i '/^persist\.service\.adb\.enable=/d;/^persist\.service\.debuggable=/d;/^persist\.sys\.usb\.config=/d;/^persist\.sys\.usb\.configfs=/d;/^persist\.sys\.usb\.state=/d;/^persist\.sys\.usb\.controller=/d;/^ro\.adb\.secure=/d;/^ro\.debuggable=/d;/^service\.adb\.root=/d' "${adb_vprop}"
+    {
+        echo ""
+        echo "# Force enable ADB and debugging"
+        echo "persist.service.adb.enable=1"
+        echo "persist.service.debuggable=1"
+        echo "persist.sys.usb.config=mtp,adb"
+        echo "persist.sys.usb.configfs=1"
+        echo "persist.sys.usb.state=mtp,adb"
+        # Do not override the device's own USB controller name if it defines one,
+        # a wrong controller value breaks USB entirely
+        grep -q "^sys.usb.controller=" "${adb_vprop}" || echo "persist.sys.usb.controller=dwc3"
+        echo "ro.adb.secure=0"
+        echo "ro.debuggable=1"
+        echo "service.adb.root=1"
+    } >> "${adb_vprop}"
+fi
+
 sed -i "/tango.*/d" build/portrom/images/system/system/build.prop || true
 echo "persist.sys.computility.cpulevel=6" >> build/portrom/images/product/etc/build.prop
 echo "persist.sys.computility.gpulevel=6" >> build/portrom/images/product/etc/build.prop
