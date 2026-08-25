@@ -1739,6 +1739,11 @@ fi
         sed -i "s/dtbo_tv.img/dtbo_custom.img/g" out/${os_type}_${device_code}_${port_rom_version}/META-INF/com/google/android/update-binary
         sed -i "s/dtbo_tv.img/dtbo_custom.img/g" out/${os_type}_${device_code}_${port_rom_version}/windows_flash_script.bat
         sed -i "s/dtbo_tv.img/dtbo_custom.img/g" out/${os_type}_${device_code}_${port_rom_version}/mac_linux_flash_script.sh
+        # The Windows script has no boot_tv references; rewire its CUSTOM_BOOT menu
+        # (which points at ksu/noksu images that are absent in a custom-only build)
+        # to the custom kernel and drop the official-boot block instead.
+        sed -i 's/boot_ksu\.img/'"$custombootimg"'/g;s/dtbo_ksu\.img/dtbo_custom.img/g;s/boot_noksu\.img/'"$custombootimg"'/g;s/dtbo_noksu\.img/dtbo_custom.img/g' out/${os_type}_${device_code}_${port_rom_version}/windows_flash_script.bat
+        sed -i '/^REM OFFICAL_BOOT_START$/,/^REM OFFICAL_BOOT_END$/d' out/${os_type}_${device_code}_${port_rom_version}/windows_flash_script.bat
 else
     sed -i '/^REM CUSTOM_BOOT_START/,/^REM CUSTOM_BOOT_END/d' out/${os_type}_${device_code}_${port_rom_version}/windows_flash_script.bat
     fi

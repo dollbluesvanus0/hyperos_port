@@ -15,7 +15,22 @@ package_extract_file() {
 
 package_extract_zstd() {
   ui_print "- Flashing $(echo $2 | cut -d '/' -f 6)"
-  unzip -p "$ZIPFILE" "$1" | /tmp/zstd -c -d > "$2"
+  unzip -p "$ZIPFILE" "$1" | /tmp/META-INF/zstd -c -d > "$2"
+}
+
+getVolumeKey() {
+  ui_print "- Press Volume Key [+] \"Yes\" [-] \"No\""
+  keyInfo=true
+  while $keyInfo;do
+    keyInfo=$(getevent -qlc 1 |grep KEY_VOLUME)
+    if [ "$keyInfo" == "" ];then
+      continue
+    else
+      isUpKey=$(echo $keyInfo |grep KEY_VOLUMEUP)
+      [ "$isUpKey" != "" ] && return 0 || return 1
+      break
+    fi
+  done
 }
 
 checkDevice() {
@@ -32,8 +47,14 @@ checkDevice() {
   ui_print "========================="
   if [ "$myDevice" != "$romDevice" ]; then
     ui_print "- Device code verification failed! Please verify your device model."
-      ui_print "- Flashing terminated."
-      exit 1
+      ui_print "- If flashing the wrong package leads to bricking, you will bear the consequences yourself."
+      ui_print "- Do you want to continue flashing anyway?"
+      if ! getVolumeKey ;then
+        ui_print "- Flashing terminated."
+        exit 1
+      else
+        ui_print "- Continuing flashing process..."
+      fi
     else
       ui_print "- Continuing flashing process..."
     fi
@@ -41,7 +62,7 @@ checkDevice() {
 
 [ -d /tmp ] && rm -rf /tmp
 mkdir -p /tmp
-unzip "$ZIPFILE" zstd -d /tmp
+unzip "$ZIPFILE" META-INF/zstd -d /tmp
 chmod -R 0755 /tmp
 
 checkDevice
