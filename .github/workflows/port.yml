@@ -11,6 +11,11 @@ on:
         description: 'Port ROM URL'
         required: true
         type: string
+      kernel_url:
+        description: 'Optional custom kernel zip URL (Google Drive or direct link). Leave empty to keep stock kernel.'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   port:
@@ -46,8 +51,9 @@ jobs:
         env:
           BASEROM: ${{ github.event.inputs.baserom }}
           PORTROM: ${{ github.event.inputs.portrom }}
+          KERNEL_URL: ${{ github.event.inputs.kernel_url }}
         run: |
-          sudo ./port.sh "$BASEROM" "$PORTROM"
+          sudo ./port.sh "$BASEROM" "$PORTROM" "$KERNEL_URL"
 
       - name: Upload to Pixeldrain
         env:

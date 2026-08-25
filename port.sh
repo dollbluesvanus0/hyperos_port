@@ -15,8 +15,13 @@ build_user="Bruce Teng"
 build_host=$(hostname)
 
 # 底包和移植包为外部参数传入
+# Usage: ./port.sh <baserom> <portrom> [custom_kernel_zip]
+#        baserom/portrom: local path or URL
+#        custom_kernel_zip (optional): local path or URL (Google Drive supported)
+#        of an AnyKernel3 zip or a zip with Image[/Image.gz[-dtb]] + [dtb] + [dtbo.img]
 baserom="$1"
 portrom="$2"
+kernel_zip="${3:-}"
 
 work_dir=$(pwd)
 tools_dir=${work_dir}/bin/$(uname)/$(uname -m)
@@ -1139,6 +1144,54 @@ else
     yellow "devices/${base_rom_code}/overlay 未找到" "devices/${base_rom_code}/overlay not found" 
 fi
 
+# Optional custom kernel: kernel_zip = local path or URL (set as 3rd argument,
+# or via the kernel_url input when running the GitHub Action). Embedding is
+# entirely optional - when empty, the stock boot.img from the baserom is used.
+if [[ -n "${kernel_zip}" ]]; then
+    downloaded_kernel=false
+    if [[ ! -f "${kernel_zip}" ]]; then
+        case "${kernel_zip}" in
+            *drive.google.com*|*docs.google.com*)
+                blue "Скачиваю кастомное ядро с Google Drive" "Downloading custom kernel from Google Drive"
+                if exists gdown; then
+                    gdown "${kernel_zip}" -O custom_kernel.zip || true
+                    downloaded_kernel=true
+                else
+                    error "gdown не установлен (pip3 install gdown)" "gdown is missing (pip3 install gdown)"
+                fi
+                ;;
+            http*)
+                blue "Скачиваю кастомное ядро: ${kernel_zip}" "Downloading custom kernel: ${kernel_zip}"
+                aria2c --max-download-limit=1024M --file-allocation=none -s5 -x5 "${kernel_zip}" || true
+                kernel_zip=$(basename "${kernel_zip}")
+                kernel_zip="${kernel_zip%%\?*}"
+                downloaded_kernel=true
+                ;;
+            *)
+                error "Кастомное ядро не найдено: ${kernel_zip}" "Custom kernel not found: ${kernel_zip}"
+                ;;
+        esac
+    fi
+
+    if [[ ! -f "${kernel_zip}" && -f "custom_kernel.zip" ]]; then
+        kernel_zip="custom_kernel.zip"
+    fi
+
+    if [[ -f "${kernel_zip}" ]]; then
+        green "Найден архив кастомного ядра: ${kernel_zip}" "Custom kernel zip found: ${kernel_zip}"
+        case "$(basename "${kernel_zip}")" in
+            *-NoKSU*|*-noksu*|*_NoKSU*) dest="tmp/anykernel-noksu" ;;
+            *-KSU*|*-ksu*|*_KSU*)       dest="tmp/anykernel-ksu" ;;
+            *)                          dest="tmp/anykernel-download" ;;
+        esac
+        rm -rf "${dest}"
+        mkdir -p "${dest}"
+        unzip -oq "${kernel_zip}" -d "${dest}" || { error "Не удалось распаковать ${kernel_zip}" "Failed to extract ${kernel_zip}"; rm -rf "${dest}"; }
+    else
+        yellow "Архив ядра недоступен, использую стоковое boot.img" "Kernel zip unavailable, keeping stock boot.img"
+    fi
+fi
+
 for zip in $(find devices/${base_rom_code}/ -name "*.zip"); do
     if unzip -l $zip | grep -q "anykernel.sh" ;then
         blue "检查到第三方内核压缩包 $zip [AnyKernel类型]" "Custom Kernel zip $zip detected [Anykernel]"
@@ -1154,26 +1207,45 @@ done
 for anykernel_dir in tmp/anykernel*; do
     if [ -d "$anykernel_dir" ]; then
         blue "开始整合第三方内核进boot.img" "Start integrating custom kernel into boot.img"
-        kernel_file=$(find "$anykernel_dir" -name "Image" -exec readlink -f {} +)
-        dtb_file=$(find "$anykernel_dir" -name "dtb" -exec readlink -f {} +)
-        dtbo_img=$(find "$anykernel_dir" -name "dtbo.img" -exec readlink -f {} +)
+        kernel_file=$(find "$anykernel_dir" -type f \( -name "Image" -o -name "Image.gz" -o -name "Image.gz-dtb" \) | head -n 1 | xargs readlink -f)
+        dtb_file=$(find "$anykernel_dir" -type f -name "dtb" | head -n 1 | xargs readlink -f)
+        dtbo_img=$(find "$anykernel_dir" -type f -name "dtbo.img" | head -n 1 | xargs readlink -f)
+        if [[ ! -f "${kernel_file}" ]]; then
+            red "В ${anykernel_dir} не найдено ядро (Image/Image.gz)" "No kernel image found in ${anykernel_dir}"
+            rm -rf $anykernel_dir
+            continue
+        fi
         if [[ "$anykernel_dir" == *"-ksu"* ]]; then
-            cp $dtbo_img ${work_dir}/devices/$base_rom_code/dtbo_ksu.img
+            [ -n "${dtbo_img}" ] && cp $dtbo_img ${work_dir}/devices/$base_rom_code/dtbo_ksu.img
             patch_kernel_to_bootimg "$kernel_file" "$dtb_file" "boot_ksu.img"
             blue "生成内核boot_boot_ksu.img完毕" "New boot_ksu.img generated"
         elif [[ "$anykernel_dir" == *"-noksu"* ]]; then
-            cp $dtbo_img ${work_dir}/devices/$base_rom_code/dtbo_noksu.img
+            [ -n "${dtbo_img}" ] && cp $dtbo_img ${work_dir}/devices/$base_rom_code/dtbo_noksu.img
             patch_kernel_to_bootimg "$kernel_file" "$dtb_file" "boot_noksu.img"
             blue "生成内核boot_noksu.img" "New boot_noksu.img generated"
         else
-            cp $dtbo_img ${work_dir}/devices/$base_rom_code/dtbo_custom.img
+            [ -n "${dtbo_img}" ] && cp $dtbo_img ${work_dir}/devices/$base_rom_code/dtbo_custom.img
             patch_kernel_to_bootimg "$kernel_file" "$dtb_file" "boot_custom.img"
             blue "生成内核boot_custom.img完毕" "New boot_custom.img generated"
         fi
     fi
     rm -rf $anykernel_dir
 done
+[ "${downloaded_kernel:-false}" == true ] && rm -rf custom_kernel.zip
 
+
+# Android 17 support: retarget base vendor sepolicy 30 -> 31 (guide by @itsxiima).
+# Only for HyperOS 3/4 donors on Android 17.
+if [[ ${port_android_version} == "17" ]]; then
+    if [[ "${port_mios_version_incremental}" =~ ^OS[34]\. ]]; then
+        retarget_vendor_sepolicy_31
+    else
+        yellow "Донор на Android 17, но не HyperOS 3/4 (${port_mios_version_incremental}), ретаргетинг sepolicy пропущен" "Donor is Android 17 but not HyperOS 3/4 (${port_mios_version_incremental}), skipping sepolicy retarget"
+    fi
+
+    # HyperOS 3/4 vibration fix (vibrator-bridge HAL) - Android 17 only
+    apply_vibrator_fix_hos4
+fi
 
 # 去除avb校验
 blue "去除avb校验" "Disable avb verification."
@@ -1247,6 +1319,7 @@ if [ "$pack_type" = "EXT" ];then
         blue "正在生成: $i " "Generating $i"
         python3 bin/fspatch.py build/portrom/images/$i build/portrom/images/config/"$i"_fs_config
         python3 bin/contextpatch.py build/portrom/images/$i build/portrom/images/config/"$i"_file_contexts
+        [[ "${i}" == "vendor" ]] && merge_vibrator_pack_configs "${i}"
         eval "$i"_inode=$(sudo cat build/portrom/images/config/"$i"_fs_config | wc -l)
         eval "$i"_inode=$(echo "$(eval echo "$"$i"_inode") + 8" | bc)
         mke2fs -O ^has_journal -L $i -I 256 -N $(eval echo "$"$i"_inode") -M /$i -m 0 -t ext4 -b 4096 build/portrom/images/$i.img $(eval echo "$"$i"_size") || false
@@ -1284,6 +1357,7 @@ else
                 blue 以[$pack_type]文件系统打包[${pname}.img] "Packing [${pname}.img] with [$pack_type] filesystem"
                 python3 bin/fspatch.py build/portrom/images/${pname} build/portrom/images/config/${pname}_fs_config
                 python3 bin/contextpatch.py build/portrom/images/${pname} build/portrom/images/config/${pname}_file_contexts
+                [[ "${pname}" == "vendor" ]] && merge_vibrator_pack_configs "${pname}"
                 #sudo perl -pi -e 's/\\@/@/g' build/portrom/images/config/${pname}_file_contexts
         mkfs.erofs -zlz4hc,9 --mount-point /${pname} --fs-config-file build/portrom/images/config/${pname}_fs_config --file-contexts build/portrom/images/config/${pname}_file_contexts build/portrom/images/${pname}.img build/portrom/images/${pname}
                 if [ -f "build/portrom/images/${pname}.img" ];then

@@ -303,6 +303,148 @@ update_netlink() {
   fi
 }
 
+# Android 17 support (HyperOS 3/4 donors): retarget the old base vendor sepolicy
+# from version 30 to version 31 so it matches the new system policy mappings.
+# Based on the guide by @itsxiima. Runs offline on the extracted trees:
+#   - vendor:   build/portrom/images/vendor/etc/selinux/{vendor_sepolicy,plat_pub_versioned}.cil
+#   - mappings: build/portrom/images/{system,system_ext,product}/.../selinux/mapping/31.0.cil
+retarget_vendor_sepolicy_31() {
+    local selinux_dir="build/portrom/images/vendor/etc/selinux"
+    local vendor_cil="${selinux_dir}/vendor_sepolicy.cil"
+    local plat_pub_cil="${selinux_dir}/plat_pub_versioned.cil"
+    local tmpdir have_count need_count
+
+    if [[ ! -f "${vendor_cil}" || ! -f "${plat_pub_cil}" ]]; then
+        yellow "vendor_sepolicy.cil/plat_pub_versioned.cil не найдены, ретаргетинг пропущен" "vendor_sepolicy.cil/plat_pub_versioned.cil not found, skipping sepolicy retarget"
+        return 1
+    fi
+
+    # Donor mapping files: at least the system one must exist
+    map_list=()
+    [ -f "build/portrom/images/system/system/etc/selinux/mapping/31.0.cil" ] && map_list+=("build/portrom/images/system/system/etc/selinux/mapping/31.0.cil")
+    [ -f "build/portrom/images/system_ext/etc/selinux/mapping/31.0.cil" ] && map_list+=("build/portrom/images/system_ext/etc/selinux/mapping/31.0.cil")
+    [ -f "build/portrom/images/product/etc/selinux/mapping/31.0.cil" ] && map_list+=("build/portrom/images/product/etc/selinux/mapping/31.0.cil")
+    if [ ${#map_list[@]} -eq 0 ]; then
+        error "В доноре нет mapping/31.0.cil — ретаргетинг sepolicy невозможен" "Donor has no mapping/31.0.cil - cannot retarget vendor sepolicy"
+        exit 1
+    fi
+
+    blue "Ретаргетинг vendor sepolicy на версию 31" "Retargeting vendor sepolicy to version 31"
+
+    # Step 2: rename all _30_0 references to _31_0 in vendor policy
+    sed -i 's/_30_0/_31_0/g' "${vendor_cil}"
+    sed -i 's/_30_0/_31_0/g' "${plat_pub_cil}"
+
+    tmpdir=$(mktemp -d)
+
+    # Attributes the vendor declares
+    grep -ohE '\(typeattribute [A-Za-z0-9_-]+_31_0\)' \
+        "${vendor_cil}" "${plat_pub_cil}" \
+        | sed -E 's/\(typeattribute (.*)\)/\1/' | sort -u > "${tmpdir}/have.txt"
+    have_count=$(wc -l < "${tmpdir}/have.txt")
+
+    # Attributes the new system references
+    cat "${map_list[@]}" \
+        | grep -ohE '\(expandtypeattribute \([A-Za-z0-9_-]+_31_0\)|\(typeattributeset [A-Za-z0-9_-]+_31_0' \
+        | grep -oE '[A-Za-z0-9_-]+_31_0' | sort -u > "${tmpdir}/want.txt"
+
+    # Missing declarations -> append them to plat_pub_versioned.cil
+    comm -13 "${tmpdir}/have.txt" "${tmpdir}/want.txt" > "${tmpdir}/need.txt"
+    need_count=$(wc -l < "${tmpdir}/need.txt")
+    if [ "${need_count}" -gt 0 ]; then
+        echo ';; added when retargeting vendor sepolicy to 31' >> "${plat_pub_cil}"
+        sed 's/^/(typeattribute /; s/$/)/' "${tmpdir}/need.txt" >> "${plat_pub_cil}"
+    fi
+
+    # Step 4: spoof platform sepolicy version so init picks the 31.0 mapping
+    printf '31.0\n' > "${selinux_dir}/plat_sepolicy_vers.txt"
+
+    green "Sepolicy ретаргечен на 31 (объявлено: ${have_count}, дописано деклараций: ${need_count})" "Vendor sepolicy retargeted to 31 (declared: ${have_count}, added declarations: ${need_count})"
+    rm -rf "${tmpdir}"
+}
+
+# HyperOS 3/4 vibration fix (Android 17): installs the vibrator-bridge AIDL HAL
+# from devices/common/vibrator_hos4.zip into the vendor tree, appends its sepolicy
+# rules and stores its fs_config/file_contexts overrides for the packer.
+apply_vibrator_fix_hos4() {
+    local zipfile="devices/common/vibrator_hos4.zip"
+    local vendir="build/portrom/images/vendor"
+    local extract_dir="tmp/vibrator_hos4"
+
+    if [[ ! -f "${zipfile}" ]]; then
+        yellow "${zipfile} не найден, пропуск фикса вибрации" "${zipfile} not found, skipping vibration fix"
+        return 1
+    fi
+
+    blue "Устанавливаю фикс вибрации vibrator-bridge (HyperOS 3/4)" "Installing vibrator-bridge vibration fix (HyperOS 3/4)"
+    rm -rf "${extract_dir}"
+    mkdir -p "${extract_dir}"
+    unzip -oq "${zipfile}" -d "${extract_dir}" || { error "Не удалось распаковать vibrator_hos4.zip" "Failed to extract vibrator_hos4.zip"; rm -rf "${extract_dir}"; return 1; }
+
+    # 1) Copy payload into vendor with correct host-side permissions
+    mkdir -p "${vendir}/bin/hw" "${vendir}/etc/init" "${vendir}/etc/vintf/manifest"
+    cp -f "${extract_dir}/vendor/bin/hw/vibrator-bridge"                 "${vendir}/bin/hw/"
+    cp -f "${extract_dir}/vendor/etc/init/vibrator-bridge.rc"            "${vendir}/etc/init/"
+    cp -f "${extract_dir}/vendor/etc/vintf/manifest/vibrator-bridge.xml" "${vendir}/etc/vintf/manifest/"
+    chmod 0755 "${vendir}/bin/hw/vibrator-bridge"
+    chmod 0644 "${vendir}/etc/init/vibrator-bridge.rc" "${vendir}/etc/vintf/manifest/vibrator-bridge.xml"
+
+    # 2) Append sepolicy allow rules (idempotent)
+    if [ -f "${extract_dir}/policy.cil" ] && [ -f "${vendir}/etc/selinux/vendor_sepolicy.cil" ]; then
+        if ! grep -q "hal_vibrator_default" "${vendir}/etc/selinux/vendor_sepolicy.cil"; then
+            yellow "Тип hal_vibrator_default отсутствует в vendor_sepolicy.cil, правила могут не примениться" "Type hal_vibrator_default missing from vendor_sepolicy.cil, rules may not take effect"
+        fi
+        if ! grep -q ";; vibrator-bridge (HyperOS 3/4 fix)" "${vendir}/etc/selinux/vendor_sepolicy.cil"; then
+            {
+                echo ""
+                echo ";; vibrator-bridge (HyperOS 3/4 fix)"
+                cat "${extract_dir}/policy.cil"
+            } >> "${vendir}/etc/selinux/vendor_sepolicy.cil"
+        fi
+    else
+        yellow "vendor_sepolicy.cil не найден, sepolicy-часть фикса пропущена" "vendor_sepolicy.cil not found, skipping sepolicy part of the fix"
+    fi
+
+    # 3) Store permission/label overrides, merged into generated packer
+    #    configs by merge_vibrator_pack_configs() right before image creation
+    mkdir -p build/portrom/images/config
+    cat "${extract_dir}/config/vendor_fs_config"     > build/portrom/images/config/vibrator_fs_config
+    cat "${extract_dir}/config/vendor_file_contexts" > build/portrom/images/config/vibrator_file_contexts
+
+    green "Фикс вибрации установлен (0755 root:shell для HAL, контексты и sepolicy)" "Vibration fix installed (HAL 0755 root:shell, contexts and sepolicy applied)"
+}
+
+# Merge the vibrator-bridge fs_config / file_contexts overrides into the
+# configs generated by fspatch.py / contextpatch.py. Those tools guess labels
+# for new files (usually plain vendor_file), which breaks HAL startup - these
+# authoritative entries guarantee correct ownership/mode/labels:
+#   vendor/bin/hw/vibrator-bridge         -> 0 2000 0755, hal_vibrator_default_exec
+#   vendor/etc/{init,vintf/manifest}/...  -> 0 0 0644,   vendor_configs_file
+merge_vibrator_pack_configs() {
+    local part="$1"
+    local cfgdir="build/portrom/images/config"
+    local fsf="${cfgdir}/${part}_fs_config"
+    local ctxf="${cfgdir}/${part}_file_contexts"
+
+    [ -s "${cfgdir}/vibrator_fs_config" ] || return 0
+    [ -f "${fsf}" ] || return 0
+
+    # fs_config: normalize the zip's slot-prefixed style (vendor_a/...) to the
+    # generated format (vendor/...), drop any auto-generated duplicates, append
+    sed 's|^vendor_a/|'"${part}"'/|' "${cfgdir}/vibrator_fs_config" > "${cfgdir}/vibrator_fs_config.norm"
+    sed -i '\#bin/hw/vibrator-bridge 0 #d;\#etc/init/vibrator-bridge\.rc 0 #d;\#etc/vintf/manifest/vibrator-bridge\.xml 0 #d' "${fsf}"
+    cat "${cfgdir}/vibrator_fs_config.norm" >> "${fsf}"
+    rm -f "${cfgdir}/vibrator_fs_config.norm"
+
+    # file_contexts: drop guessed labels for our files, append authoritative ones
+    if [ -f "${ctxf}" ]; then
+        sed -i '/vibrator-bridge/d' "${ctxf}"
+        cat "${cfgdir}/vibrator_file_contexts" >> "${ctxf}"
+    fi
+
+    green "Права и контексты vibrator-bridge применены к ${part}" "vibrator-bridge permissions/contexts merged into ${part} configs"
+}
+
 patch_kernel_to_bootimg() {
     kernel_file=$1
     dtb_file=$2
@@ -345,7 +487,11 @@ patch_kernel_to_bootimg() {
       fi
     fi
     sudo cp -f $kernel_file ${work_dir}/tmp/boot/kernel
-    sudo cp -f $dtb_file ${work_dir}/tmp/boot/dtb
+    if [ -n "${dtb_file}" ] && [ -f "${dtb_file}" ]; then
+        sudo cp -f $dtb_file ${work_dir}/tmp/boot/dtb
+    else
+        yellow "dtb не найден в архиве ядра, оставляю стоковый dtb" "No dtb found in kernel zip, keeping stock dtb"
+    fi
     cd ${work_dir}/tmp/boot/ramdisk/
     find | sed 1d | cpio -H newc -R 0:0 -o -F ../ramdisk_new.cpio > /dev/null 2>&1
     cd ..
