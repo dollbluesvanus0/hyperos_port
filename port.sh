@@ -823,8 +823,12 @@ if [[ "${force_adb}" == "true" ]]; then
         echo "persist.sys.usb.configfs=1"
         echo "persist.sys.usb.state=mtp,adb"
         # Do not override the device's own USB controller name if it defines one,
-        # a wrong controller value breaks USB entirely
-        grep -q "^sys.usb.controller=" "${adb_vprop}" || echo "persist.sys.usb.controller=dwc3"
+        # a wrong controller value breaks USB entirely. init reads the
+        # non-persist sys.usb.controller, the persist one alone is not enough.
+        if ! grep -q "^sys.usb.controller=" "${adb_vprop}"; then
+            echo "persist.sys.usb.controller=dwc3" >> "${adb_vprop}"
+            echo "sys.usb.controller=a600000.dwc3" >> "${adb_vprop}"
+        fi
         echo "ro.adb.secure=0"
         echo "ro.debuggable=1"
         echo "service.adb.root=1"
@@ -1282,14 +1286,12 @@ if [ ${remove_data_encrypt} = "true" ];then
     blue "去除data加密"
     for fstab in $(find build/portrom/images -type f -name "fstab.*");do
 		blue "Target: $fstab"
-		sed -i "s/,fileencryption=aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized+wrappedkey_v0//g" $fstab
-		sed -i "s/,fileencryption=aes-256-xts:aes-256-cts:v2+emmc_optimized+wrappedkey_v0//g" $fstab
-		sed -i "s/,fileencryption=aes-256-xts:aes-256-cts:v2//g" $fstab
-		sed -i "s/,metadata_encryption=aes-256-xts:wrappedkey_v0//g" $fstab
-		sed -i "s/,fileencryption=aes-256-xts:wrappedkey_v0//g" $fstab
-		sed -i "s/,metadata_encryption=aes-256-xts//g" $fstab
-		sed -i "s/,fileencryption=aes-256-xts//g" $fstab
-        sed -i "s/,fileencryption=ice//g" $fstab
+		# Generic comma-token removal covers every known crypto variant,
+		# including devices that express metadata encryption via
+		# keydirectory= (e.g. Xiaomi fstab.default with ICE wrappedkey),
+		# which the old enumerated fileencryption=*/metadata_encryption=*
+		# patterns never matched.
+		sed -i -E 's/,fileencryption=[^,]*//g;s/,metadata_encryption=[^,]*//g;s/,keydirectory=[^,]*//g;s/,inlinecrypt//g;s/,wrappedkey//g' $fstab
 		sed -i "s/fileencryption/encryptable/g" $fstab
 	done
 fi
