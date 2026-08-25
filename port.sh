@@ -108,7 +108,7 @@ case "${portrom}" in
     *.zip)
         if unzip -l "${portrom}" | grep -q "payload.bin"; then
             green "检测到payload.bin文件" "Found payload.bin file"
-        elif [[ "${portrom}" == *"xiaomi.eu"* ]] && (unzip -l ${baserom} | grep -q "images/super.img*") ; then
+        elif [[ "${portrom}" == *"xiaomi.eu"* ]] && (unzip -l ${portrom} | grep -q "images/super.img*") ; then
             green "检测到super.img.*文件" "Found super.img.* files"
     is_eu_rom=true
 else
@@ -449,10 +449,10 @@ if [[ -f "${targetAospFrameworkResOverlay}" ]]; then
     targetDir=$(echo "$filename" | sed 's/\..*$//')
     bin/apktool/apktool d $targetAospFrameworkResOverlay -o tmp/$targetDir -f > /dev/null 2>&1
 
-    #for xml in $(find tmp/$targetDir -type f -name "integers.xml");do
-        # magic: Change DefaultPeakRefrshRate to 60 
-        #xmlstarlet ed -L -u "//integer[@name='config_defaultPeakRefreshRate']/text()" -v 120 $xml
-    #done
+    for xml in $(find tmp/$targetDir -type f -name "integers.xml");do
+        # magic: Change DefaultPeakRefreshRate to 60 so manual Hz selection works up to panel max
+        xmlstarlet ed -L -u "//integer[@name='config_defaultPeakRefreshRate']/text()" -v 60 $xml
+    done
     if [[ $port_android_version == "15" || $port_android_version == "16" ]]; then
         blue "Fix VanillaIceCream brightness" 
         for xml in $(find tmp/$targetDir -type f -name "*.xml");do
@@ -516,14 +516,14 @@ if [ $(grep -c "sm8250" "build/portrom/images/vendor/build.prop") -ne 0 ]; then
     echo "ro.vendor.display.mode_change_optimize.enable=true" >> build/portrom/images/vendor/build.prop
    if [[ $port_android_version == "15" || $port_android_version == "16" ]]; then
           {
-            echo " ro.miui.affinity.sfui=4-7"
-            echo "ro.miui.affinity.sfre=4-7" 
-            echo "ro.miui.affinity.sfuireset=4-7" 
+            echo "ro.miui.affinity.sfui=4-7"
+            echo "ro.miui.affinity.sfre=4-7"
+            echo "ro.miui.affinity.sfuireset=4-7"
             echo "persist.sys.miui_animator_sched.bigcores=4-7"
             echo "persist.sys.miui_animator_sched.big_prime_cores=4-7"
             echo "persist.vendor.display.miui.composer_boost=4-7"
         }  >> build/portrom/images/product/etc/build.prop
-	
+
    else
     sed -i "s/persist.sys.miui_animator_sched.bigcores=.*/persist.sys.miui_animator_sched.bigcores=4-6/" build/portrom/images/product/etc/build.prop
     sed -i "s/persist.sys.miui_animator_sched.big_prime_cores=.*/persist.sys.miui_animator_sched.big_prime_cores=4-7/" build/portrom/images/product/etc/build.prop
@@ -540,7 +540,7 @@ if [ $(grep -c "sm8250" "build/portrom/images/vendor/build.prop") -ne 0 ]; then
     fi
 fi
 # props from k60
-#echo "persist.vendor.mi_sf.optimize_for_refresh_rate.enable=1" >> build/portrom/images/vendor/build.prop
+echo "persist.vendor.mi_sf.optimize_for_refresh_rate.enable=1" >> build/portrom/images/vendor/build.prop
 echo "ro.vendor.mi_sf.ultimate.perf.support=true"  >> build/portrom/images/vendor/build.prop
 
 #echo "debug.sf.set_idle_timer_ms=1100" >> build/portrom/images/vendor/build.prop
@@ -548,7 +548,7 @@ echo "ro.vendor.mi_sf.ultimate.perf.support=true"  >> build/portrom/images/vendo
 #echo "ro.surface_flinger.set_touch_timer_ms=200" >> build/portrom/images/vendor/build.prop
 
 # https://source.android.com/docs/core/graphics/multiple-refresh-rate
-#echo "ro.surface_flinger.use_content_detection_for_refresh_rate=false" >> build/portrom/images/vendor/build.prop
+echo "ro.surface_flinger.use_content_detection_for_refresh_rate=false" >> build/portrom/images/vendor/build.prop
 echo "ro.surface_flinger.set_touch_timer_ms=0" >> build/portrom/images/vendor/build.prop
 echo "ro.surface_flinger.set_idle_timer_ms=0" >> build/portrom/images/vendor/build.prop
 
@@ -556,13 +556,27 @@ echo "ro.surface_flinger.set_idle_timer_ms=0" >> build/portrom/images/vendor/bui
 targetVintf=$(find build/portrom/images/system_ext/etc/vintf -type f -name "manifest.xml")
 if [ -f "$targetVintf" ]; then
     # Check if the file contains $vndk_version
-    if grep -q "<version>$vndk_version</version>" "$targetVintf"; then
+    if grep -q "<version>${vndk_version}</version>" "$targetVintf"; then
         yellow "${vndk_version}已存在，跳过修改" "The file already contains the version $vndk_version. Skipping modification."
     else
-        # If it doesn't contain $vndk_version, then add it
-        ndk_version="<vendor-ndk>\n     <version>$vndk_version</version>\n </vendor-ndk>"
-        sed -i "/<\/vendor-ndk>/a$ndk_version" "$targetVintf"
-        yellow "添加成功" "Version $vndk_version added to $targetVintf"
+        # Insert exactly ONE <vendor-ndk> entry. A15/A16 manifests contain multiple
+        # </vendor-ndk> closing tags; sed "/a" would duplicate the block after every
+        # one of them producing invalid XML and a bootloop.
+        python3 - "$targetVintf" "${vndk_version}" <<'PYEOF'
+import sys
+
+path, ver = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    data = f.read()
+block = "<vendor-ndk>\n        <version>%s</version>\n    </vendor-ndk>" % ver
+if "<vendor-ndk>" in data:
+    data = data.replace("</vendor-ndk>", "</vendor-ndk>\n    " + block, 1)
+elif "</manifest>" in data:
+    data = data.replace("</manifest>", "    %s\n</manifest>" % block, 1)
+with open(path, "w", encoding="utf-8") as f:
+    f.write(data)
+PYEOF
+        green "添加成功" "Version $vndk_version added to $targetVintf"
     fi
 else
     blue "File $targetVintf not found."
@@ -577,14 +591,18 @@ else
 
     blue "Running FrameworkPatcher for CN Notification Fix and Kaorios-Toolbox"
     if [[ ! -d tmp/fw_patcher ]]; then
-        git clone https://github.com/FrameworksForge/FrameworkPatcher.git tmp/fw_patcher
+        git clone --depth=1 https://github.com/FrameworksForge/FrameworkPatcher.git tmp/fw_patcher || true
     fi
 
     # Find the target JAR files
     FW_JAR=$(find build/portrom/images -type f -name "framework.jar" | head -n 1)
     MIUI_SERVICES_JAR=$(find build/portrom/images -type f -name "miui-services.jar" | head -n 1)
 
-    if [[ -f "$FW_JAR" ]] && [[ -f "$MIUI_SERVICES_JAR" ]]; then
+    if [[ ! -f tmp/fw_patcher/scripts/patcher_a${port_android_version}.sh ]]; then
+        red "FrameworkPatcher: scripts/patcher_a${port_android_version}.sh не найден" "FrameworkPatcher: scripts/patcher_a${port_android_version}.sh not found"
+        yellow "Использую встроенный патч подписи" "Falling back to built-in signature bypass"
+        bypass_apk_signature_check
+    elif [[ -f "$FW_JAR" ]] && [[ -f "$MIUI_SERVICES_JAR" ]]; then
         cp "$FW_JAR" tmp/fw_patcher/
         cp "$MIUI_SERVICES_JAR" tmp/fw_patcher/
 
@@ -667,9 +685,12 @@ else
             blue "Kaorios Toolbox installed successfully"
         else
             red "FrameworkPatcher failed to generate patched JARs"
+            yellow "Использую встроенный патч подписи" "Falling back to built-in signature bypass"
+            bypass_apk_signature_check
         fi
     else
-        yellow "framework.jar or miui-services.jar not found, skipping FrameworkPatcher"
+        yellow "framework.jar или miui-services.jar не найдены, использую встроенный патч подписи" "framework.jar or miui-services.jar not found, running built-in signature bypass"
+        bypass_apk_signature_check
     fi
 
     #blue "开始移除 Android 签名校验" "Disalbe Android 14 Apk Signature Verfier"
@@ -778,6 +799,7 @@ fi
 blue "正在修改 build.prop" "Modifying build.prop"
 #
 sed -i "s/ro.control_privapp_permissions=.*/ro.control_privapp_permissions=disable/g" build/portrom/images/vendor/build.prop || true
+grep -q "^ro.control_privapp_permissions=" build/portrom/images/vendor/build.prop || echo "ro.control_privapp_permissions=disable" >> build/portrom/images/vendor/build.prop
 sed -i "/persist.sys.enhance_vkpipelinecache.enable=/d" build/portrom/images/product/etc/build.prop || true
 sed -i "/tango.*/d" build/portrom/images/system/system/build.prop || true
 echo "persist.sys.computility.cpulevel=6" >> build/portrom/images/product/etc/build.prop
@@ -910,6 +932,12 @@ sed -i "s/persist\.sys\.millet\.cgroup1/#persist\.sys\.millet\.cgroup1/" build/p
 #Fix：Fingerprint issue encountered on OS V1.0.18
 echo "vendor.perf.framepacing.enable=false" >> build/portrom/images/vendor/build.prop
 
+# FEAS fallback: on HyperOS 2/3 (Android 15/16) ports with an old vendor the FEAS
+# service fails to init, which blocks refresh-rate switching in Settings.
+if [[ ${port_android_version} == "15" || ${port_android_version} == "16" ]]; then
+    echo "persist.sys.feas.enable=true" >> build/portrom/images/product/etc/build.prop
+fi
+
 
 # Millet fix
 blue "修复Millet" "Fix Millet"
@@ -958,26 +986,26 @@ echo "persist.miui.extm.dm_opt.enable=true" >> build/portrom/images/product/etc/
 
 # Unlock Smart fps
 #
-#maxFps=$(xmlstarlet sel -t -v "//integer-array[@name='fpsList']/item" build/portrom/images/product/etc/device_features/${base_rom_code}.xml | sort -nr | head -n 1)
+maxFps=$(xmlstarlet sel -t -v "//integer-array[@name='fpsList']/item" build/portrom/images/product/etc/device_features/${base_rom_code}.xml 2>/dev/null | sort -nr | head -n 1)
 #
-#if [ -z "$maxFps" ]; then
-#    maxFps=90
-#fi
+if [ -z "$maxFps" ]; then
+    maxFps=90
+fi
 #
-#unlock_device_feature "whether support fps change " "bool" "support_smart_fps"
-#unlock_device_feature "smart fps value" "integer" "smart_fps_value" "${maxFps}"
+unlock_device_feature "whether support fps change " "bool" "support_smart_fps"
+unlock_device_feature "smart fps value" "integer" "smart_fps_value" "${maxFps}"
 
 if [[ ${base_rom_code} == "munch" ]];then
     unlock_device_feature "whether support dc backlight " "bool" "support_dc_backlight"
     unlock_device_feature "whether backlight bit switch " "bool" "support_backlight_bit_switch"
 fi
-#patch_smali "PowerKeeper.apk" "DisplayFrameSetting.smali" "unicorn" "umi"
-#if [[ ${is_eu_rom} == true ]];then
-#    patch_smali "MiSettings.apk" "NewRefreshRateFragment.smali" "const-string v1, \"btn_preferce_category\"" "const-string v1, \"btn_preferce_category\"\n\n\tconst\/16 p1, 0x1"
+patch_smali "PowerKeeper.apk" "DisplayFrameSetting.smali" "unicorn" "umi"
+if [[ ${is_eu_rom} == true ]];then
+    patch_smali "MiSettings.apk" "NewRefreshRateFragment.smali" "const-string v1, \"btn_preferce_category\"" "const-string v1, \"btn_preferce_category\"\n\n\tconst\/16 p1, 0x1"
 
-#else
-#    patch_smali "MISettings.apk" "NewRefreshRateFragment.smali" "const-string v1, \"btn_preferce_category\"" "const-string v1, \"btn_preferce_category\"\n\n\tconst\/16 p1, 0x1"
-#fi
+else
+    patch_smali "MISettings.apk" "NewRefreshRateFragment.smali" "const-string v1, \"btn_preferce_category\"" "const-string v1, \"btn_preferce_category\"\n\n\tconst\/16 p1, 0x1"
+fi
 # Unlock eyecare mode 
 #unlock_device_feature "default rhythmic eyecare mode" "integer" "default_eyecare_mode" "2"
 #unlock_device_feature "default texture for paper eyecare" "integer" "paper_eyecare_default_texture" "0"
@@ -1081,9 +1109,11 @@ if [[ -d "devices/common" ]];then
     elif [[ $nfc_fix_type == "a14" ]]; then
         unzip -oq devices/common/nfc_a14.zip -d build/portrom/images/
         echo "ro.vendor.nfc.dispatch_optim=1" >> build/portrom/images/vendor/build.prop
-    elif [[ ${port_android_version} == "15" || ${port_android_version} == "16" ]]; then
+    elif [[ ${port_android_version} == "15" ]]; then
         unzip -oq devices/common/nfc_a15.zip -d build/portrom/images/
         echo "ro.vendor.nfc.dispatch_optim=1" >> build/portrom/images/vendor/build.prop
+    elif [[ ${port_android_version} == "16" ]]; then
+        yellow "Android 16: пропускаю замену NFC, нет совместимого фикса" "Android 16: skipping NFC replacement (no compatible fix yet)"
     fi
     if [[ $base_rom_code == "munch" ]] && [[ ${port_android_version} == "15" || ${port_android_version} == "16" ]]; then
         sourceCamera=$(find build/baserom/images/ -type f -name "MiuiCamera.apk")
@@ -1365,7 +1395,7 @@ if [[ $pack_method == "aosp" ]];then
             bootimg=$(find build/baserom/ -name "boot.img")
             dtboimg=$(find build/baserom/images -name "dtbo.img")
             vbmetaimg=$(find build/baserom/images -name "vbmeta.img")
-            vmbeta_systemimg=$(find build/baserom/images -name "vbmeta_sytem.img")
+            vmbeta_systemimg=$(find build/baserom/images -name "vbmeta_system.img")
             cp -rf $bootimg out/target/product/${base_rom_code}/IMAGES/
             cp -rf $dtboimg out/target/product/${base_rom_code}/firmware-update
             cp -rf $vbmetaimg out/target/product/${base_rom_code}/firmware-update
@@ -1601,8 +1631,8 @@ fi
     sed -i '/^REM OFFICAL_BOOT_START/,/^REM OFFICAL_BOOT_END/d' out/${os_type}_${device_code}_${port_rom_version}/windows_flash_script.bat
         
     elif [[ -f "$custom_bootimg_file" ]];then
-        custombootimg=$(basename "$custom_botimg_file")
-        mv -f $custom_botimg_file out/${os_type}_${device_code}_${port_rom_version}/
+        custombootimg=$(basename "$custom_bootimg_file")
+        mv -f $custom_bootimg_file out/${os_type}_${device_code}_${port_rom_version}/
         mv -f  devices/$base_rom_code/dtbo_custom.img out/${os_type}_${device_code}_${port_rom_version}/firmware-update/dtbo_custom.img
         sed -i "s/boot_tv.img/$custombootimg/g" out/${os_type}_${device_code}_${port_rom_version}/META-INF/com/google/android/update-binary
         sed -i "s/boot_tv.img/$custombootimg/g" out/${os_type}_${device_code}_${port_rom_version}/windows_flash_script.bat

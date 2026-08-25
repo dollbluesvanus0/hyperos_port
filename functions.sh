@@ -37,7 +37,7 @@ yellow() {
 
 blue() {
     if [ "$#" -eq 2 ]; then
-        
+
         if [[ "$LANG" == zh_CN* ]]; then
             echo -e \[$(date +%m%d-%T)\] "\033[1;34m"$1"\033[0m"
         elif [[ "$LANG" == en* ]]; then
@@ -49,6 +49,23 @@ blue() {
         echo -e \[$(date +%m%d-%T)\] "\033[1;34m"$1"\033[0m"
     else
         echo "Usage: blue <Chinese> <English>"
+    fi
+}
+
+red() {
+    if [ "$#" -eq 2 ]; then
+
+        if [[ "$LANG" == zh_CN* ]]; then
+            echo -e \[$(date +%m%d-%T)\] "\033[0;31m"$1"\033[0m"
+        elif [[ "$LANG" == en* ]]; then
+            echo -e \[$(date +%m%d-%T)\] "\033[0;31m"$2"\033[0m"
+        else
+            echo -e \[$(date +%m%d-%T)\] "\033[0;31m"$2"\033[0m"
+        fi
+    elif [ "$#" -eq 1 ]; then
+        echo -e \[$(date +%m%d-%T)\] "\033[0;31m"$1"\033[0m"
+    else
+        echo "Usage: red <Chinese> <English>"
     fi
 }
 
@@ -182,44 +199,16 @@ is_property_exists () {
     fi
 }
 
-# Function to update netlink in build.prop
-update_netlink() {
-  local netlink_version=$1
-  local prop_file=$2
-
-  if grep -q "ro.millet.netlink" "$prop_file"; then
-    blue "找到ro.millet.netlink修改值为$netlink_version" "millet_netlink propery found, changing value to $netlink_version"
-    sed -i "s/ro.millet.netlink=.*/ro.millet.netlink=$netlink_version/" "$prop_file"
-  else
-    blue "PORTROM未找到ro.millet.netlink值,添加为$netlink_version" "millet_netlink not found in portrom, adding new value $netlink_version"
-    echo -e "ro.millet.netlink=$netlink_version\n" >> "$prop_file"
-  fi
-}
-
-disable_avb_verify() {
-    fstab=$1
-    blue "Disabling avb_verify: $fstab"
-    if [[ ! -f $fstab ]]; then
-        yellow "$fstab not found, please check it manually"
-    else
-        sed -i "s/,avb_keys=.*avbpubkey//g" $fstab
-        sed -i "s/,avb=vbmeta_system//g" $fstab
-        sed -i "s/,avb=vbmeta_vendor//g" $fstab
-        sed -i "s/,avb=vbmeta//g" $fstab
-        sed -i "s/,avb//g" $fstab
-    fi
-}
-
 extract_partition() {
     part_img=$1
     part_name=$(basename ${part_img})
     target_dir=$2
-    if [[ -f ${part_img} ]];then 
+    if [[ -f ${part_img} ]];then
         if [[ $($tools_dir/gettype -i ${part_img} ) == "ext" ]];then
             blue "[ext] 正在分解${part_name}" "[ext] Extracing ${part_name} "
             sudo python3 bin/imgextractor/imgextractor.py ${part_img} ${target_dir} >/dev/null 2>&1 || { error "分解 ${part_name} 失败" "Extracting ${part_name} failed."; exit 1; }
             green "[ext]分解[${part_name}] 完成" "[ext] ${part_name} extracted."
-            rm -rf ${part_img}      
+            rm -rf ${part_img}
         elif [[ $($tools_dir/gettype -i ${part_img}) == "erofs" ]]; then
             blue "[erofs] 正在分解${part_name} " "[erofs] Extracing ${part_name} "
             extract.erofs -x -i ${part_img}  -o $target_dir > /dev/null 2>&1 || { error "分解 ${part_name} 失败" "Extracting ${part_name} failed." ; exit 1; }
@@ -229,7 +218,7 @@ extract_partition() {
             error "无法识别img文件类型，请检查" "Unable to handle img, exit."
             exit 1
         fi
-    fi    
+    fi
 }
 
 disable_avb_verify() {
@@ -250,6 +239,68 @@ disable_avb_verify() {
         done
         blue "AVB 验证禁用完成" "AVB verification disabled successfully"
     fi
+}
+
+# Fallback: disable the APK signature scheme enforcement inside services.jar.
+# Used on Android 14+ ports when the external FrameworkPatcher is unavailable or fails,
+# otherwise replaced/patched system apps fail to install and the ROM never finishes booting.
+bypass_apk_signature_check() {
+    yellow "开始移除 APK 签名校验 (services.jar)" "Disabling APK Signature Verifier (services.jar)"
+    if [[ ! -f build/portrom/images/system/system/framework/services.jar ]]; then
+        error "未找到 services.jar，跳过签名补丁" "services.jar not found, skipping signature patch"
+        return 1
+    fi
+
+    if [[ ! -d tmp ]]; then
+        mkdir -p tmp/
+    fi
+    rm -rf tmp/services tmp/services.jar tmp/services_patched.jar
+    cp -f build/portrom/images/system/system/framework/services.jar tmp/services.jar
+
+    java -jar bin/apktool/APKEditor.jar d -f -i tmp/services.jar -o tmp/services > /dev/null 2>&1
+
+    target_method='getMinimumSignatureSchemeVersionForTargetSdk'
+    old_smali_dir=""
+    declare -a smali_dirs
+
+    while read -r smali_file; do
+        smali_dir=$(echo "$smali_file" | cut -d "/" -f 3)
+
+        if [[ $smali_dir != $old_smali_dir ]]; then
+            smali_dirs+=("$smali_dir")
+        fi
+
+        method_line=$(grep -n "$target_method" "$smali_file" | cut -d ':' -f 1)
+        register_number=$(tail -n +"$method_line" "$smali_file" | grep -m 1 "move-result" | tr -dc '0-9')
+        move_result_end_line=$(awk -v ML=$method_line 'NR>=ML && /move-result /{print NR; exit}' "$smali_file")
+        orginal_line_number=$method_line
+        replace_with_command="const/4 v${register_number}, 0x0"
+        { sed -i "${orginal_line_number},${move_result_end_line}d" "$smali_file" && sed -i "${orginal_line_number}i\\${replace_with_command}" "$smali_file"; } &&    blue "${smali_file}  修改成功" "${smali_file} patched"
+        old_smali_dir=$smali_dir
+    done < <(find tmp/services/smali/*/com/android/server/pm/ tmp/services/smali/*/com/android/server/pm/pkg/parsing/ -maxdepth 1 -type f -name "*.smali" -exec grep -H "$target_method" {} \; 2>/dev/null | cut -d ':' -f 1)
+
+    java -jar bin/apktool/APKEditor.jar b -f -i tmp/services -o tmp/services_patched.jar > /dev/null 2>&1
+    if [ -f tmp/services_patched.jar ]; then
+        cp -rf tmp/services_patched.jar build/portrom/images/system/system/framework/services.jar
+        green "APK 签名校验已移除" "APK signature verifier disabled successfully"
+    else
+        error "services.jar 重打包失败" "Failed to rebuild services.jar"
+    fi
+    rm -rf tmp/services tmp/services.jar tmp/services_patched.jar
+}
+
+# Function to update netlink in build.prop
+update_netlink() {
+  local netlink_version=$1
+  local prop_file=$2
+
+  if grep -q "ro.millet.netlink" "$prop_file"; then
+    blue "找到ro.millet.netlink修改值为$netlink_version" "millet_netlink propery found, changing value to $netlink_version"
+    sed -i "s/ro.millet.netlink=.*/ro.millet.netlink=$netlink_version/" "$prop_file"
+  else
+    blue "PORTROM未找到ro.millet.netlink值,添加为$netlink_version" "millet_netlink not found in portrom, adding new value $netlink_version"
+    echo -e "ro.millet.netlink=$netlink_version\n" >> "$prop_file"
+  fi
 }
 
 patch_kernel_to_bootimg() {
