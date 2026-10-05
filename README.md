@@ -85,6 +85,25 @@ Contacts MIUIAod MiuiHome MIUISecurityCenter  Mms  MIUIContentExtension  MIUIPac
 ```
 - 上述代码中，底包路径和移植包路径可以替换为链接
 
+## GitHub Actions
+
+Open [Actions → Build HyperOS port](https://github.com/dollbluesvanus0/hyperos_port/actions/workflows/build-port.yml), select **Run workflow**, choose branch **test**, and start the build.
+
+**Pixeldrain upload is enabled by default.** First create a key on [Pixeldrain's API keys page](https://pixeldrain.com/user/api_keys) and add it under **Settings → Secrets and variables → Actions → New repository secret**, named **`PIXELDRAIN_API_KEY`**. The workflow checks authentication before downloading firmware. To build using GitHub artifacts alone, uncheck **Upload to Pixeldrain**.
+
+The stock and donor URLs are already filled in:
+
+- Stock: **Venus / Mi 11**, HyperOS **OS2.0.3.0.UKBMIXM**, Android 14.
+- Donor: **Diting / Redmi K50 Ultra**, HyperOS **OS2.0.211.0.VLFCNXM**, Android 15.
+
+Both inputs require an official HTTPS OTA ZIP containing `payload.bin`. Keep **Repack as EXT4** enabled for the default build; disabling it preserves the stock filesystem. `aosp` produces the OTA/recovery ZIP, while `super` produces the existing super-image flash package.
+
+The workflow installs dependencies on Ubuntu 24.04, frees unused runner SDKs, and requires at least 40 GiB of free space before downloading. It deletes its own downloaded archives after extraction and redundant extracted trees before packaging. Builds have a six-hour timeout.
+
+When the run succeeds, download **hyperos-port-<run ID>** from **Artifacts**; it contains the ROM ZIP and `SHA256SUMS`. **build-log-<run ID>** contains the download/build log, including failed builds that reached the build step. Artifacts are retained for **7 days**. A successful ZIP build still needs boot/functionality testing on the target device.
+
+After building, the workflow uploads the ROM ZIP through [Pixeldrain's PUT API](https://pixeldrain.com/api) and verifies the returned size and SHA256 against the local file. The download link appears in the run summary and `pixeldrain-links.txt` inside the log artifact. If uploading fails, the GitHub ROM artifact remains available. Pixeldrain's file-size and storage limits depend on your account plan.
+
 ## 感谢
 > 本项目使用了以下开源项目的部分或全部内容，感谢这些项目的开发者（排名顺序不分先后）。
 

@@ -3,6 +3,9 @@
 /dist/
 /tmp/
 /out/
+/.ci-downloads/
+/port-build.log
+/pixeldrain-links.txt
 .DS_Store
 *.pyc
 /.history/

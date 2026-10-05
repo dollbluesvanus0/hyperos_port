@@ -1,0 +1,48 @@
+name: Check scripts and build environment
+
+on:
+  push:
+    paths:
+      - '*.sh'
+      - 'ci/**'
+      - 'tests/**'
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - '*.sh'
+      - 'ci/**'
+      - 'tests/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install the same dependencies as the ROM build
+        run: sudo bash ci/install-dependencies.sh
+      - name: Check shell syntax and regressions
+        run: |
+          for script in port.sh functions.sh ci/*.sh tests/*.sh; do
+            bash -n "$script"
+          done
+          bash tests/merge_mi_ext.sh
+          bash tests/actions_support.sh
+      - name: Verify bundled Linux tools can start
+        run: |
+          export PATH="$PWD/bin/Linux/x86_64:$PWD/otatools/bin:$PATH"
+          export LD_LIBRARY_PATH="$PWD/bin/Linux/x86_64/lib64:$PWD/otatools/lib64"
+          payload-dumper --help
+          mke2fs -V
+          mkdir -p tmp/tool-check
+          printf 'zipalign check\n' > tmp/tool-check/input.txt
+          zip -j tmp/tool-check.zip tmp/tool-check/input.txt
+          zipalign -c 4 tmp/tool-check.zip
+          otatools/bin/ota_from_target_files --help

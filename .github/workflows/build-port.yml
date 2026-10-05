@@ -1,0 +1,126 @@
+name: Build HyperOS port
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Stock OTA ZIP URL (Venus / Mi 11)
+        required: true
+        type: string
+        default: https://bigota.d.miui.com/OS2.0.3.0.UKBMIXM/venus_global-ota_full-OS2.0.3.0.UKBMIXM-user-14.0-0335ac5334.zip
+      donor_url:
+        description: Donor OTA ZIP URL (Diting / Redmi K50 Ultra)
+        required: true
+        type: string
+        default: https://bkt-sgp-miui-ota-update-alisgp.oss-ap-southeast-1.aliyuncs.com/OS2.0.211.0.VLFCNXM/diting-ota_full-OS2.0.211.0.VLFCNXM-user-15.0-bfba6cae73.zip
+      repack_with_ext4:
+        description: Repack as EXT4 (otherwise keep the stock filesystem)
+        required: true
+        type: boolean
+        default: true
+      pack_method:
+        description: Output package format
+        required: true
+        type: choice
+        options:
+          - aosp
+          - super
+        default: aosp
+      upload_to_pixeldrain:
+        description: Upload the ROM to Pixeldrain (requires PIXELDRAIN_API_KEY secret)
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hyperos-port-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository and bundled tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Validate scripts and mi_ext merging
+        run: |
+          for script in port.sh functions.sh ci/*.sh tests/*.sh; do
+            bash -n "$script"
+          done
+          bash tests/merge_mi_ext.sh
+          bash tests/actions_support.sh
+
+      - name: Check Pixeldrain credentials
+        if: ${{ inputs.upload_to_pixeldrain }}
+        env:
+          PIXELDRAIN_API_KEY: ${{ secrets.PIXELDRAIN_API_KEY }}
+        run: bash ci/upload-pixeldrain.sh --check
+
+      - name: Free space on the hosted runner
+        run: |
+          df -h .
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/.ghcup /usr/local/share/powershell /opt/hostedtoolcache
+          df -h .
+          available_kib=$(df --output=avail . | tail -n 1 | tr -d ' ')
+          if (( available_kib < 40 * 1024 * 1024 )); then
+            echo "::error::At least 40 GiB of free disk space is required for this ROM build."
+            exit 1
+          fi
+
+      - name: Install build dependencies
+        run: sudo bash ci/install-dependencies.sh
+
+      - name: Download firmware and build port
+        env:
+          BASE_ROM_URL: ${{ inputs.base_url }}
+          DONOR_ROM_URL: ${{ inputs.donor_url }}
+          REPACK_WITH_EXT4: ${{ inputs.repack_with_ext4 }}
+          PACK_METHOD: ${{ inputs.pack_method }}
+        run: bash ci/build.sh 2>&1 | tee port-build.log
+
+      - name: Upload ROM and SHA256 checksums
+        id: rom
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: hyperos-port-${{ github.run_id }}
+          path: |
+            out/*.zip
+            out/SHA256SUMS
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Link the result
+        env:
+          ARTIFACT_URL: ${{ steps.rom.outputs.artifact-url }}
+        run: |
+          printf '### HyperOS port\n\n[Download ROM artifact](%s)\n\n' "$ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
+          printf 'SHA256 checksums are included in the artifact. Retention: 7 days.\n' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload ROM to Pixeldrain
+        if: ${{ inputs.upload_to_pixeldrain }}
+        env:
+          PIXELDRAIN_API_KEY: ${{ secrets.PIXELDRAIN_API_KEY }}
+        run: bash ci/upload-pixeldrain.sh 2>&1 | tee -a port-build.log
+
+      - name: Upload build log and Pixeldrain links
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: build-log-${{ github.run_id }}
+          path: |
+            port-build.log
+            pixeldrain-links.txt
+          if-no-files-found: ignore
+          retention-days: 7

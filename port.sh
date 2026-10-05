@@ -25,6 +25,18 @@ export PATH=$(pwd)/bin/$(uname)/$(uname -m)/:$(pwd)/otatools/bin:$PATH
 # Import functions
 source functions.sh
 
+# Only discard archives downloaded by the Actions helper, never local inputs.
+ci_remove_downloaded_rom() {
+    [[ "${GITHUB_ACTIONS:-}" == true && "${PORT_CI_CLEANUP:-}" == true ]] || return 0
+    local archive
+    archive=$(realpath "$1") || return 1
+    case "$archive" in
+        "$work_dir"/.ci-downloads/base/*.zip|"$work_dir"/.ci-downloads/donor/*.zip)
+            rm -f -- "$archive"
+            ;;
+    esac
+}
+
 shopt -s expand_aliases
 if [[ "$OSTYPE" == "darwin"* ]]; then
     yellow "检测到Mac，设置alias" "macOS detected,setting alias"
@@ -83,6 +95,10 @@ if [ "$(echo $baserom |grep _multi_)" != "" ];then
     device_code=$(basename $baserom |cut -d '_' -f 3)
 elif [ "$(echo $baserom |grep miui_)" != "" ] || [ "$(echo $baserom |grep xiaomi.eu_)" != "" ];then
     device_code=$(basename $baserom |cut -d '_' -f 2)
+elif [[ "$(basename "$baserom")" == *-ota_full-* ]];then
+    device_code=$(basename "$baserom")
+    device_code=${device_code%%-ota_full-*}
+    device_code=${device_code%%_*}
 else
     device_code="YourDevice"
 fi
@@ -154,7 +170,7 @@ mkdir -p build/portrom/images/
 # 提取分区
 if [[ ${baserom_type} == 'payload' ]];then
     blue "正在提取底包 [payload.bin]" "Extracting files from BASEROM [payload.bin]"
-    payload-dumper --out build/baserom/images/ $baserom
+    payload-dumper --out build/baserom/images/ "$baserom" || exit 1
     green "底包 [payload.bin] 提取完毕" "[payload.bin] extracted."
 elif [[ ${baserom_type} == 'br' ]];then
     blue "正在提取底包 [new.dat.br]" "Extracting files from BASEROM [*.new.dat.br]"
@@ -176,6 +192,7 @@ elif [[ ${is_base_rom_eu} == true ]];then
         rm -rf build/baserom/firmware-update/cust.img.*
     fi
 fi
+ci_remove_downloaded_rom "$baserom" || exit 1
 
 if [[ ${is_eu_rom} == true ]];then
     blue "正在提取移植包 [super.img]" "Extracting files from PORTROM [super.img]"
@@ -196,9 +213,10 @@ elif [[ ${portrom_type} == "fastboot" ]];then
     green "移植包 [super.img] 提取完毕" "[super.img] extracted."
 else
     blue "正在提取移植包 [payload.bin]" "Extracting files from PORTROM [payload.bin]"
-    payload-dumper --partitions system,product,system_ext,mi_ext --out build/portrom/images/ $portrom
+    payload-dumper --partitions system,product,system_ext,mi_ext --out build/portrom/images/ "$portrom" || exit 1
     green "移植包 [payload.bin] 提取完毕" "[payload.bin] extracted."
 fi
+ci_remove_downloaded_rom "$portrom" || exit 1
 
 if [[ ${is_base_rom_eu} == true ]];then
     blue "开始分解底包 [super.img]" "Unpacking BASEROM [super.img]"
@@ -1043,6 +1061,11 @@ if [ ${remove_data_encrypt} = "true" ];then
 	done
 fi
 
+# All stock overlays, props and kernel patches have been copied at this point.
+if [[ "${GITHUB_ACTIONS:-}" == true && "${PORT_CI_CLEANUP:-}" == true ]];then
+    rm -rf -- build/baserom/images/{system,system_ext,product,mi_ext,system_dlkm,product_dlkm}
+fi
+
 for pname in ${port_partition};do
     rm -rf build/portrom/images/${pname}.img
 done
@@ -1280,9 +1303,14 @@ if [[ $pack_method == "aosp" ]];then
             cp "$prop_file" "out/target/product/${base_rom_code}/${prop_paths[$dir]}/"
         fi
     done
+    if [[ "${GITHUB_ACTIONS:-}" == true && "${PORT_CI_CLEANUP:-}" == true ]];then
+        for part in ${super_list}; do
+            rm -rf -- "build/portrom/images/$part"
+        done
+    fi
     pushd otatools
     export PATH=${work_dir}/otatools/bin/:$PATH
-    ./bin/ota_from_target_files ${work_dir}/out/target/product/${base_rom_code}/ ${work_dir}/out/${base_rom_code}-ota_full_${port_rom_version}-user-${port_android_version}.0.zip
+    ./bin/ota_from_target_files ${work_dir}/out/target/product/${base_rom_code}/ ${work_dir}/out/${base_rom_code}-ota_full_${port_rom_version}-user-${port_android_version}.0.zip || exit 1
     popd
     ziphash=$(md5sum out/${base_rom_code}-ota_full_${port_rom_version}-user-${port_android_version}.0.zip |head -c 10)
     if [[ ${is_eu_rom} == true ]];then
@@ -1295,6 +1323,11 @@ if [[ $pack_method == "aosp" ]];then
 
 else
 # 打包 super.img
+if [[ "${GITHUB_ACTIONS:-}" == true && "${PORT_CI_CLEANUP:-}" == true ]];then
+    for part in ${super_list}; do
+        rm -rf -- "build/portrom/images/$part"
+    done
+fi
 if [[ "$is_ab_device" == false ]];then
     blue "打包A-only super.img" "Packing super.img for A-only device"
     lpargs="-F --output build/portrom/images/super.img --metadata-size 65536 --super-name super --metadata-slots 2 --block-size 4096 --device super:$superSize --group=qti_dynamic_partitions:$superSize"
