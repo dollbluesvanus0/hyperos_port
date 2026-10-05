@@ -58,6 +58,7 @@ assert test ! -e "$archive"
 mkdir -p "$fixture_root/harness/ci" "$fixture_root/harness/bin" "$fixture_root/tools"
 cp "$repository_dir/ci/build.sh" "$fixture_root/harness/ci/"
 cp "$repository_dir/ci/upload-pixeldrain.sh" "$fixture_root/harness/ci/"
+cp "$repository_dir/ci/pixeldrain.py" "$fixture_root/harness/ci/"
 cp "$repository_dir/bin/port_config" "$fixture_root/harness/bin/"
 cat > "$fixture_root/harness/port.sh" <<'SH'
 #!/usr/bin/env bash
@@ -123,13 +124,15 @@ cat > "$fixture_root/tools/curl" <<'SH'
 while (( $# )); do
     case "$1" in
         --output) response=$2; shift ;;
-        --upload-file) rom=$2; shift ;;
+        --upload-file) rom=$2; uploading=true; shift ;;
         --user) [[ "$2" == :fixture-api-key ]] || exit 25; shift ;;
+        https://*) url=$1 ;;
     esac
     shift
 done
 [[ "${TEST_FAILURE:-}" == http ]] && exit 22
 [[ "$response" == /dev/null ]] && exit 0
+rom=${rom:-out/test.zip}
 size=$(wc -c < "$rom" | tr -d ' ')
 hash=$(sha256sum "$rom" | cut -d ' ' -f 1)
 case "${TEST_FAILURE:-}" in
@@ -138,6 +141,14 @@ case "${TEST_FAILURE:-}" in
     no_id) printf '{"success":true}' > "$response"; exit 0 ;;
     api) printf '{"success":false,"value":"writing"}' > "$response"; exit 0 ;;
 esac
+if [[ "$url" == */user/files ]]; then
+    printf '{"files":[{"id":"Ab1234xy","name":"test.zip","size":%s,"hash_sha256":"%s"}]}' "$size" "$hash" > "$response"
+    exit 0
+fi
+if [[ "${uploading:-false}" == true ]]; then
+    printf '{"id":"Ab1234xy"}' > "$response"
+    exit 0
+fi
 printf '{"success":true,"id":"Ab1234xy","size":%s,"hash_sha256":"%s"}' "$size" "$hash" > "$response"
 SH
 chmod +x "$fixture_root/tools/curl"
@@ -150,6 +161,9 @@ bash "$upload_helper" > "$fixture_root/upload.log" 2>&1
 assert grep -Fq https://pixeldrain.com/u/Ab1234xy "$fixture_root/harness/pixeldrain-links.txt"
 assert grep -Fq https://pixeldrain.com/u/Ab1234xy "$GITHUB_STEP_SUMMARY"
 assert bash -c '! grep -Fq fixture-api-key "$1"' _ "$fixture_root/upload.log"
+bash "$upload_helper" --reuse > "$fixture_root/upload.log" 2>&1
+assert grep -Fq 'Found the same ROM' "$fixture_root/upload.log"
+assert grep -Fq https://pixeldrain.com/u/Ab1234xy "$fixture_root/harness/pixeldrain-links.txt"
 for failure in http api no_id bad_hash bad_size; do
     assert bash -c '! TEST_FAILURE="$1" bash "$2" > "$3" 2>&1' _ "$failure" "$upload_helper" "$fixture_root/upload.log"
 done

@@ -1,0 +1,53 @@
+name: Publish saved ROM to Pixeldrain
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Build run ID with a hyperos-port artifact (retained for 7 days)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Check upload helper and credentials
+        env:
+          PIXELDRAIN_API_KEY: ${{ secrets.PIXELDRAIN_API_KEY }}
+        run: |
+          bash -n ci/upload-pixeldrain.sh
+          python3 -m unittest discover -s tests -p 'test_pixeldrain.py' -v
+          bash ci/upload-pixeldrain.sh --check
+      - name: Download the saved ROM and verify checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Invalid build run ID.' >&2; exit 1; }
+          gh run download "$SOURCE_RUN_ID" --name "hyperos-port-$SOURCE_RUN_ID" --dir out
+          cd out
+          sha256sum --check SHA256SUMS
+      - name: Reuse or upload ROM and verify Pixeldrain content
+        env:
+          PIXELDRAIN_API_KEY: ${{ secrets.PIXELDRAIN_API_KEY }}
+        run: bash ci/upload-pixeldrain.sh --reuse 2>&1 | tee pixeldrain-upload.log
+      - name: Save upload log and verified links
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pixeldrain-links-${{ github.run_id }}
+          path: |
+            pixeldrain-upload.log
+            pixeldrain-links.txt
+          if-no-files-found: ignore
+          retention-days: 7

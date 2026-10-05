@@ -108,7 +108,9 @@ The workflow installs dependencies on Ubuntu 24.04, frees unused runner SDKs, an
 
 When the run succeeds, download **hyperos-port-<run ID>** from **Artifacts**; it contains the ROM ZIP and `SHA256SUMS`. **build-log-<run ID>** contains the download/build log, including failed builds that reached the build step. Artifacts are retained for **7 days**. A successful ZIP build still needs boot/functionality testing on the target device.
 
-After building, the workflow uploads the ROM ZIP through [Pixeldrain's PUT API](https://pixeldrain.com/api) and verifies the returned size and SHA256 against the local file. The download link appears in the run summary and `pixeldrain-links.txt` inside the log artifact. If uploading fails, the GitHub ROM artifact remains available. Pixeldrain's file-size and storage limits depend on your account plan.
+After building, the workflow uploads the ROM ZIP through [Pixeldrain's PUT API](https://pixeldrain.com/api), then fetches `/file/{id}/info` and verifies the stored size and SHA256 against the local file. Successful responses may omit `success`; explicit errors and invalid IDs are rejected. The download link appears in the run summary and `pixeldrain-links.txt` inside the log artifact. If uploading fails, the GitHub ROM artifact remains available. Pixeldrain's file-size and storage limits depend on your account plan.
+
+To publish a saved artifact without rebuilding, run **Publish saved ROM to Pixeldrain** on branch **test**, with the original build's numeric run ID. It downloads `hyperos-port-<run ID>`, checks `SHA256SUMS`, and reuses an existing Pixeldrain file only when its name, size and SHA256 all match. Otherwise it uploads the ROM. The public file metadata is verified in both cases, and the link is saved in the summary and `pixeldrain-links-<run ID>` artifact. Use this within the original artifact's 7-day retention period.
 
 ## 感谢
 > 本项目使用了以下开源项目的部分或全部内容，感谢这些项目的开发者（排名顺序不分先后）。

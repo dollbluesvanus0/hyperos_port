@@ -6,6 +6,7 @@
 /.ci-downloads/
 /port-build.log
 /pixeldrain-links.txt
+/pixeldrain-upload.log
 .DS_Store
 *.pyc
 /.history/
