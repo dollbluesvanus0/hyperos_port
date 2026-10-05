@@ -27,6 +27,14 @@ for pair in \
     assert test "$device_code" = "${pair#*:}"
 done
 
+worker_settings=$(sed -n '/^payload_worker_args=()/,/^fi/p' "$repository_dir/port.sh")
+GITHUB_ACTIONS=true
+eval "$worker_settings"
+assert test "${payload_worker_args[*]}" = '--workers 2'
+GITHUB_ACTIONS=false
+eval "$worker_settings"
+assert test "${#payload_worker_args[@]}" = 0
+
 # Cleanup must be opt-in and limited to CI-owned downloads, including symlinks.
 source <(sed -n '/^ci_remove_downloaded_rom() {/,/^}/p' "$repository_dir/port.sh")
 work_dir="$fixture_root"

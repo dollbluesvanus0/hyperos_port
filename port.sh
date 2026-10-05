@@ -51,6 +51,12 @@ fi
 
 check unzip aria2c 7z zip java zipalign python3 zstd bc xmlstarlet
 
+# The bundled dumper defaults to CPU count - 4, which is zero on hosted runners.
+payload_worker_args=()
+if [[ "${GITHUB_ACTIONS:-}" == true ]]; then
+    payload_worker_args=(--workers 2)
+fi
+
 # 移植的分区，可在 bin/port_config 中更改
 port_partition=$(grep "partition_to_port" bin/port_config |cut -d '=' -f 2)
 #super_list=$(grep "super_list" bin/port_config |cut -d '=' -f 2)
@@ -170,7 +176,7 @@ mkdir -p build/portrom/images/
 # 提取分区
 if [[ ${baserom_type} == 'payload' ]];then
     blue "正在提取底包 [payload.bin]" "Extracting files from BASEROM [payload.bin]"
-    payload-dumper --out build/baserom/images/ "$baserom" || exit 1
+    payload-dumper "${payload_worker_args[@]}" --out build/baserom/images/ "$baserom" || exit 1
     green "底包 [payload.bin] 提取完毕" "[payload.bin] extracted."
 elif [[ ${baserom_type} == 'br' ]];then
     blue "正在提取底包 [new.dat.br]" "Extracting files from BASEROM [*.new.dat.br]"
@@ -213,7 +219,7 @@ elif [[ ${portrom_type} == "fastboot" ]];then
     green "移植包 [super.img] 提取完毕" "[super.img] extracted."
 else
     blue "正在提取移植包 [payload.bin]" "Extracting files from PORTROM [payload.bin]"
-    payload-dumper --partitions system,product,system_ext,mi_ext --out build/portrom/images/ "$portrom" || exit 1
+    payload-dumper "${payload_worker_args[@]}" --partitions system,product,system_ext,mi_ext --out build/portrom/images/ "$portrom" || exit 1
     green "移植包 [payload.bin] 提取完毕" "[payload.bin] extracted."
 fi
 ci_remove_downloaded_rom "$portrom" || exit 1

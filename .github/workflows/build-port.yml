@@ -91,6 +91,8 @@ jobs:
 
       - name: Upload ROM and SHA256 checksums
         id: rom
+        # Pixeldrain upload must still run if GitHub artifact storage is exhausted.
+        continue-on-error: ${{ inputs.upload_to_pixeldrain }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: hyperos-port-${{ github.run_id }}
@@ -102,6 +104,7 @@ jobs:
           retention-days: 7
 
       - name: Link the result
+        if: ${{ steps.rom.outcome == 'success' }}
         env:
           ARTIFACT_URL: ${{ steps.rom.outputs.artifact-url }}
         run: |
