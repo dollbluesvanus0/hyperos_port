@@ -983,6 +983,9 @@ fi
 # Apply after every device overlay so an old bundled camera cannot overwrite it.
 python3 bin/miuicamera.py install "$miuicamera_apk" "${work_dir}/build/portrom/images" || exit 1
 
+# Run for every donor region after mi_ext, stock app replacements and overlays.
+python3 bin/debloat.py "${work_dir}/build/portrom/images" || exit 1
+
 for zip in $(find devices/${base_rom_code}/ -name "*.zip"); do
     if unzip -l $zip | grep -q "anykernel.sh" ;then
         blue "检查到第三方内核压缩包 $zip [AnyKernel类型]" "Custom Kernel zip $zip detected [Anykernel]"

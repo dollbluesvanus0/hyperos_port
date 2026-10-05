@@ -7,6 +7,8 @@ on:
       - 'ci/**'
       - 'tests/**'
       - 'bin/miuicamera.py'
+      - 'bin/debloat.py'
+      - 'bin/debloat/**'
       - 'bin/port_config'
       - '.github/workflows/**'
   pull_request:
@@ -15,6 +17,8 @@ on:
       - 'ci/**'
       - 'tests/**'
       - 'bin/miuicamera.py'
+      - 'bin/debloat.py'
+      - 'bin/debloat/**'
       - 'bin/port_config'
       - '.github/workflows/**'
   workflow_dispatch:
