@@ -82,9 +82,10 @@ if (( ${#roms[@]} == 0 )); then
     echo 'No output ROM ZIP was produced.' >&2
     exit 1
 fi
+# Allow the runner to validate and publish the root-owned build output.
+sudo chown -R "$(id -u):$(id -g)" out
 for rom in "${roms[@]}"; do
     unzip -tq "$rom"
 done
 (cd out && sha256sum -- *.zip > SHA256SUMS)
-sudo chown -R "$(id -u):$(id -g)" out
 df -h .

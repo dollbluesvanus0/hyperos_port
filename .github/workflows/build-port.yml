@@ -83,8 +83,10 @@ jobs:
       - name: Install build dependencies
         run: sudo bash ci/install-dependencies.sh
 
-      - name: Verify filesystem extraction before downloading firmware
-        run: bash ci/check-image-tools.sh
+      - name: Verify image tools and output permissions before downloading firmware
+        run: |
+          bash ci/check-image-tools.sh
+          bash ci/check-output-permissions.sh
 
       - name: Download firmware and build port
         env:

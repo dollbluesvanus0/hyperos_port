@@ -60,3 +60,4 @@ jobs:
           zipalign -c 4 tmp/tool-check-aligned.zip
           otatools/bin/ota_from_target_files --help
           bash ci/check-image-tools.sh
+          bash ci/check-output-permissions.sh
