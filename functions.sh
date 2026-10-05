@@ -306,25 +306,33 @@ disable_avb_verify() {
 }
 
 extract_partition() {
-    part_img=$1
-    part_name=$(basename ${part_img})
-    target_dir=$2
-    if [[ -f ${part_img} ]];then 
-        if [[ $($tools_dir/gettype -i ${part_img} ) == "ext" ]];then
+    local part_img=$1 target_dir=$2 part_name image_type extract_log
+    part_name=$(basename "$part_img")
+    if [[ -f "$part_img" ]];then
+        image_type=$("$tools_dir/gettype" -i "$part_img") || return 1
+        extract_log="${part_img%.img}.extract.log"
+        if [[ "$image_type" == "ext" ]];then
             blue "[ext] 正在分解${part_name}" "[ext] Extracing ${part_name} "
-            sudo python3 bin/imgextractor/imgextractor.py ${part_img} ${target_dir} >/dev/null 2>&1 || { error "分解 ${part_name} 失败" "Extracting ${part_name} failed."; exit 1; }
-            green "[ext]分解[${part_name}] 完成" "[ext] ${part_name} extracted."
-            rm -rf ${part_img}      
-        elif [[ $($tools_dir/gettype -i ${part_img}) == "erofs" ]]; then
+            sudo python3 bin/imgextractor/imgextractor.py "$part_img" "$target_dir" > "$extract_log" 2>&1 || {
+                tail -n 80 "$extract_log" >&2; return 1;
+            }
+        elif [[ "$image_type" == "erofs" ]]; then
             blue "[erofs] 正在分解${part_name} " "[erofs] Extracing ${part_name} "
-            extract.erofs -x -i ${part_img}  -o $target_dir > /dev/null 2>&1 || { error "分解 ${part_name} 失败" "Extracting ${part_name} failed." ; exit 1; }
-            green "[erofs] 分解[${part_name}] 完成" "[erofs] ${part_name} extracted."
-            rm -rf ${part_img}
+            extract.erofs -x -i "$part_img" -o "$target_dir" > "$extract_log" 2>&1 || {
+                tail -n 80 "$extract_log" >&2; return 1;
+            }
         else
             error "无法识别img文件类型，请检查" "Unable to handle img, exit."
-            exit 1
+            return 1
         fi
-    fi    
+        if [[ ! -d "$target_dir/${part_name%.img}" ]];then
+            error "分区目录未生成" "Extractor did not create $target_dir/${part_name%.img}; keeping $part_img"
+            return 1
+        fi
+        green "分解 ${part_name} 完成" "[$image_type] ${part_name} extracted."
+        rm -f -- "$part_img" "$extract_log" || return 1
+    fi
+    return 0
 }
 
 disable_avb_verify() {
@@ -369,24 +377,9 @@ patch_kernel_to_bootimg() {
     chmod 755 ramdisk
     cd ramdisk
     EXTRACT_UNSAFE_SYMLINKS=1 cpio -d -F ../ramdisk.cpio -i
-    disable_avb_verify ${work_dir}/tmp/boot/
-    #添加erofs文件系统fstab
-    if [[ ${pack_type} == "EROFS" ]];then
-        blue "检查 ramdisk fstab.qcom是否需要添加erofs挂载点" "Check if ramdisk fstab.qcom needs to add erofs mount point."
-        if ! grep -q "erofs" ${work_dir}/tmp/boot/ramdisk/fstab.qcom ; then
-                for pname in ${super_list}; do
-                    sed -i "/\/${pname}[[:space:]]\+ext4/{p;s/ext4/erofs/;s/ro,barrier=1,discard/ro/;}" ${work_dir}/tmp/boot/ramdisk/fstab.qcom
-                    added_line=$(sed -n "/\/${pname}[[:space:]]\+erofs/p" ${work_dir}/tmp/boot/ramdisk/fstab.qcom)
-    
-                    if [ -n "$added_line" ]; then
-                        yellow "添加${pname}成功" "Adding erofs mount point [$pname]"
-                    else
-                        error "添加失败，请检查" "Adding faild, please check."
-                        exit 1 
-                    fi
-                done
-          fi
-      fi
+    python3 "${work_dir}/bin/rom_layout.py" fstabs "${work_dir}/tmp/boot/ramdisk" \
+        --format "$pack_type" --partitions ${super_list} || exit 1
+    disable_avb_verify "${work_dir}/tmp/boot/"
     fi
     sudo cp -f $kernel_file ${work_dir}/tmp/boot/kernel
     sudo cp -f $dtb_file ${work_dir}/tmp/boot/dtb

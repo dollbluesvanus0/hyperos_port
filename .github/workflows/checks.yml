@@ -9,6 +9,7 @@ on:
       - 'bin/miuicamera.py'
       - 'bin/debloat.py'
       - 'bin/debloat/**'
+      - 'bin/rom_layout.py'
       - 'bin/port_config'
       - '.github/workflows/**'
   pull_request:
@@ -19,6 +20,7 @@ on:
       - 'bin/miuicamera.py'
       - 'bin/debloat.py'
       - 'bin/debloat/**'
+      - 'bin/rom_layout.py'
       - 'bin/port_config'
       - '.github/workflows/**'
   workflow_dispatch:
@@ -43,6 +45,7 @@ jobs:
           done
           bash tests/merge_mi_ext.sh
           bash tests/actions_support.sh
+          bash tests/partition_extraction.sh
           python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Verify bundled Linux tools can start
         run: |
@@ -56,3 +59,4 @@ jobs:
           zipalign -f 4 tmp/tool-check.zip tmp/tool-check-aligned.zip
           zipalign -c 4 tmp/tool-check-aligned.zip
           otatools/bin/ota_from_target_files --help
+          bash ci/check-image-tools.sh

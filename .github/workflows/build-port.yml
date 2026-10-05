@@ -59,6 +59,7 @@ jobs:
           done
           bash tests/merge_mi_ext.sh
           bash tests/actions_support.sh
+          bash tests/partition_extraction.sh
           python3 -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Check Pixeldrain credentials
@@ -81,6 +82,9 @@ jobs:
 
       - name: Install build dependencies
         run: sudo bash ci/install-dependencies.sh
+
+      - name: Verify filesystem extraction before downloading firmware
+        run: bash ci/check-image-tools.sh
 
       - name: Download firmware and build port
         env:

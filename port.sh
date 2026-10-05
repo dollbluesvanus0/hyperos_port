@@ -262,7 +262,7 @@ else
 fi
 
 for part in system system_dlkm system_ext product product_dlkm mi_ext ;do
-    extract_partition build/baserom/images/${part}.img build/baserom/images    
+    extract_partition "build/baserom/images/${part}.img" build/baserom/images || exit 1
 done
 
 # Move those to portrom folder. We need to pack those imgs into final port rom
@@ -270,33 +270,41 @@ for image in vendor odm vendor_dlkm odm_dlkm;do
     if [ -f build/baserom/images/${image}.img ];then
         mv -f build/baserom/images/${image}.img build/portrom/images/${image}.img
 
-        # Extracting vendor at first, we need to determine which super parts to pack from Baserom fstab. 
-        extract_partition build/portrom/images/${image}.img build/portrom/images/
+        extract_partition "build/portrom/images/${image}.img" build/portrom/images/ || exit 1
 
     fi
 done
 
-# Extract the partitions list that need to pack into the super.img
-super_list=$(sed '/^#/d;/^\//d;/overlay/d;/^$/d' build/portrom/images/vendor/etc/fstab.qcom \
-                | awk '{ print $1}' | sort | uniq)
+# Keep stock DLKM partitions that are not included in the donor payload.
+for part in system_dlkm product_dlkm; do
+    if [[ -d "build/baserom/images/$part" ]];then
+        cp -af "build/baserom/images/$part" build/portrom/images/ || exit 1
+        for metadata in fs_config file_contexts; do
+            if [[ -f "build/baserom/images/config/${part}_${metadata}" ]];then
+                mkdir -p build/portrom/images/config || exit 1
+                cp -af "build/baserom/images/config/${part}_${metadata}" build/portrom/images/config/ || exit 1
+            fi
+        done
+    fi
+done
 
 # 分解镜像
 green "开始提取逻辑分区镜像" "Starting extract portrom partition from img"
-for part in ${super_list} mi_ext;do
+for part in ${port_partition:-system product system_ext} mi_ext;do
 # Skip already extraced parts from BASEROM
     if [[ ! -d build/portrom/images/${part} ]]; then
         if [[ ${is_eu_rom} == true ]];then
             blue "PORTROM super.img 提取 [${part}] 分区..." "Extracting [${part}] from PORTROM super.img"
             blue "lpunpack.py PORTROM super.img ${part}_a"
-            python3 bin/lpunpack.py -p ${part}_a build/portrom/super.img build/portrom/images 
-            mv build/portrom/images/${part}_a.img build/portrom/images/${part}.img
+            python3 bin/lpunpack.py -p ${part}_a build/portrom/super.img build/portrom/images || exit 1
+            mv build/portrom/images/${part}_a.img build/portrom/images/${part}.img || exit 1
         elif [[ ${portrom_type} == "fastboot" ]];then
             blue "PORTROM super.img 提取 [${part}] 分区..." "Extracting [${part}] from PORTROM super.img"
             blue "lpunpack.py PORTROM super.img ${part}_a"
-            python3 bin/lpunpack.py -p ${part}_a build/portrom/super.img build/portrom/images 
-            mv build/portrom/images/${part}_a.img build/portrom/images/${part}.img
+            python3 bin/lpunpack.py -p ${part}_a build/portrom/super.img build/portrom/images || exit 1
+            mv build/portrom/images/${part}_a.img build/portrom/images/${part}.img || exit 1
         fi
-    extract_partition "${work_dir}/build/portrom/images/${part}.img" "${work_dir}/build/portrom/images/"
+    extract_partition "${work_dir}/build/portrom/images/${part}.img" "${work_dir}/build/portrom/images/" || exit 1
     else
         yellow "跳过从PORTORM提取分区[${part}]" "Skip extracting [${part}] from PORTROM"
     fi
@@ -308,6 +316,11 @@ merge_mi_ext "${work_dir}/build/portrom/images" || {
     error "合并 mi_ext 失败" "Failed to merge donor mi_ext"
     exit 1
 }
+
+# Validate required files before any props/patches, then pack only real trees.
+python3 bin/rom_layout.py validate build/portrom/images --base-images build/baserom/images || exit 1
+super_list=$(python3 bin/rom_layout.py partitions build/portrom/images) || exit 1
+green "待打包分区: $super_list" "Partitions to pack: $super_list"
 
 blue "正在获取ROM参数" "Fetching ROM build prop."
 
@@ -1021,24 +1034,9 @@ for anykernel_dir in tmp/anykernel*; do
     rm -rf $anykernel_dir
 done
 
-#添加erofs文件系统fstab
-if [ ${pack_type} == "EROFS" ];then
-    yellow "检查 vendor fstab.qcom是否需要添加erofs挂载点" "Validating whether adding erofs mount points is needed."
-    if ! grep -q "erofs" build/portrom/images/vendor/etc/fstab.qcom ; then
-               for pname in system odm vendor product mi_ext system_ext; do
-                     sed -i "/\/${pname}[[:space:]]\+ext4/{p;s/ext4/erofs/;s/ro,barrier=1,discard/ro/;}" build/portrom/images/vendor/etc/fstab.qcom
-                     added_line=$(sed -n "/\/${pname}[[:space:]]\+erofs/p" build/portrom/images/vendor/etc/fstab.qcom)
-    
-                    if [ -n "$added_line" ]; then
-                        yellow "添加$pname" "Adding mount point $pname"
-                    else
-                        error "添加失败，请检查" "Adding faild, please check."
-                        exit 1
-                        
-                    fi
-                done
-    fi
-fi
+# Configure actual image fstabs; some devices keep their fstabs in the ramdisk.
+python3 bin/rom_layout.py fstabs build/portrom/images --format "$pack_type" \
+    --partitions ${super_list} || exit 1
 
 # 去除avb校验
 blue "去除avb校验" "Disable avb verification."
