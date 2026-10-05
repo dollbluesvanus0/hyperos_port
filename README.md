@@ -6,6 +6,13 @@
 
 </div>
 
+## Тестовый режим APK/JAR
+
+Включите **test_mode** в GitHub Actions или установите `test_mode=true` в
+`bin/port_config`. Патчи и подмена APK/JAR, установка MiuiCamera и debloat будут
+отключены. Выходной ZIP получит суффикс `_TEST`.
+[Инструкция и список отключённых изменений](docs/test-mode.md).
+
 ## 简介
 - HyperOS 一键自动移植打包
 - 支持A-only和AB机型

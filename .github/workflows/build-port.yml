@@ -26,6 +26,11 @@ on:
           - aosp
           - super
         default: aosp
+      test_mode:
+        description: Test mode - keep APK/JAR files unchanged (skip patches, camera replacement and debloat)
+        required: true
+        type: boolean
+        default: false
       upload_to_pixeldrain:
         description: Upload the ROM to Pixeldrain (requires PIXELDRAIN_API_KEY secret)
         required: true
@@ -60,6 +65,7 @@ jobs:
           bash tests/merge_mi_ext.sh
           bash tests/actions_support.sh
           bash tests/partition_extraction.sh
+          bash tests/archive_test_mode.sh
           python3 -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Check Pixeldrain credentials
@@ -94,6 +100,7 @@ jobs:
           DONOR_ROM_URL: ${{ inputs.donor_url }}
           REPACK_WITH_EXT4: ${{ inputs.repack_with_ext4 }}
           PACK_METHOD: ${{ inputs.pack_method }}
+          TEST_MODE: ${{ inputs.test_mode }}
         run: bash ci/build.sh 2>&1 | tee port-build.log
 
       - name: Upload ROM and SHA256 checksums
@@ -117,6 +124,9 @@ jobs:
         run: |
           printf '### HyperOS port\n\n[Download ROM artifact](%s)\n\n' "$ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
           printf 'SHA256 checksums are included in the artifact. Retention: 7 days.\n' >> "$GITHUB_STEP_SUMMARY"
+          if [[ '${{ inputs.test_mode }}' == true ]]; then
+            printf '\nTest mode: APK/JAR patches, app replacements and debloat were disabled.\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload ROM to Pixeldrain
         if: ${{ inputs.upload_to_pixeldrain }}
@@ -132,5 +142,6 @@ jobs:
           path: |
             port-build.log
             pixeldrain-links.txt
+            build/archive-test-baseline.json
           if-no-files-found: ignore
           retention-days: 7

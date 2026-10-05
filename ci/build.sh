@@ -11,7 +11,9 @@ repository_dir=$(pwd)
 
 case "${REPACK_WITH_EXT4:-true}" in true|false) ;; *) echo 'Invalid EXT4 setting.' >&2; exit 1 ;; esac
 case "${PACK_METHOD:-aosp}" in aosp|super) ;; *) echo 'Invalid pack method.' >&2; exit 1 ;; esac
+case "${TEST_MODE:-false}" in true|false) ;; *) echo 'Invalid test mode.' >&2; exit 1 ;; esac
 export REPACK_WITH_EXT4="${REPACK_WITH_EXT4:-true}" PACK_METHOD="${PACK_METHOD:-aosp}"
+export TEST_MODE="${TEST_MODE:-false}"
 
 # Preserve Xiaomi filenames for codename detection, but reject paths/shell syntax.
 rom_filename() {
@@ -40,7 +42,8 @@ from pathlib import Path
 
 path = Path('bin/port_config')
 settings = {'repack_with_ext4': os.environ['REPACK_WITH_EXT4'],
-            'pack_method': os.environ['PACK_METHOD']}
+            'pack_method': os.environ['PACK_METHOD'],
+            'test_mode': os.environ['TEST_MODE']}
 lines = path.read_text(encoding='utf-8').splitlines()
 for key, value in settings.items():
     if sum(line.startswith(key + '=') for line in lines) != 1:

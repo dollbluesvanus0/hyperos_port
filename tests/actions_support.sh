@@ -111,6 +111,12 @@ bash "$helper" > "$fixture_root/helper.log" 2>&1 || {
 assert test -s "$fixture_root/harness/out/SHA256SUMS"
 assert grep -Fxq repack_with_ext4=false "$fixture_root/harness/bin/port_config"
 assert grep -Fxq pack_method=super "$fixture_root/harness/bin/port_config"
+assert grep -Fxq test_mode=false "$fixture_root/harness/bin/port_config"
+TEST_MODE=true bash "$helper" > "$fixture_root/helper.log" 2>&1
+assert grep -Fxq test_mode=true "$fixture_root/harness/bin/port_config"
+TEST_MODE=false bash "$helper" > "$fixture_root/helper.log" 2>&1
+assert grep -Fxq test_mode=false "$fixture_root/harness/bin/port_config"
+assert bash -c '! TEST_MODE="invalid" bash "$1" > "$2" 2>&1' _ "$helper" "$fixture_root/helper.log"
 for failure in build no_output no_payload bad_output; do
     rm -rf "$fixture_root/harness/out"
     assert bash -c '! TEST_FAILURE="$1" bash "$2" > "$3" 2>&1' _ "$failure" "$helper" "$fixture_root/helper.log"

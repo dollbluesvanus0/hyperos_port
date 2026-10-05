@@ -74,6 +74,15 @@
 ```
 - baserom and portrom can be a direct download link. you can get the ota download link  from third-party websites.
 
+## Test builds without APK/JAR patches
+
+Enable **test_mode** in **Build HyperOS port → Run workflow**, or set
+`test_mode=true` in `bin/port_config` for local builds. The default is `false`.
+This disables APK/JAR edits and replacements, MiuiCamera installation, NFC archive
+replacement and app debloat. Device overlay files other than APK/JAR still apply.
+The build checks APK/JAR hashes before packing and marks the output ZIP `_TEST`.
+See [test mode details (Russian)](docs/test-mode.md).
+
 ## Credits
 > In this project, some or all of the content is derived from the following open-source projects. Special thanks to the developers of these projects.
 
