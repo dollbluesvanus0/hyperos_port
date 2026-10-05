@@ -196,6 +196,101 @@ update_netlink() {
   fi
 }
 
+merge_mi_ext_metadata() {
+    local source_file=$1 target_file=$2 source_prefix=$3 target_prefix=$4
+    local merged_file
+    [[ -f "$source_file" ]] || return 0
+    touch "$target_file" || return 1
+    merged_file=$(mktemp "${target_file}.XXXXXX") || return 1
+    if cp -p "$target_file" "$merged_file" && awk -v source_prefix="$source_prefix" -v target_prefix="$target_prefix" '
+        FILENAME == ARGV[1] {
+            path = $1
+            suffix = substr(path, length(source_prefix) + 1)
+            if (index(path, source_prefix) == 1 && (suffix == "" || suffix ~ /^[\/\(]/)) {
+                $1 = target_prefix suffix
+                if (!($1 in entries)) order[++count] = $1
+                entries[$1] = $0
+            }
+            next
+        }
+        !($1 in entries) { print }
+        END { for (i = 1; i <= count; i++) print entries[order[i]] }
+    ' "$source_file" "$target_file" > "$merged_file"; then
+        mv -f "$merged_file" "$target_file" && return 0
+    fi
+    rm -f "$merged_file"
+    return 1
+}
+
+merge_mi_ext_props() {
+    local source_file=$1 target_file=$2 merged_file
+    [[ -f "$source_file" ]] || return 0
+    mkdir -p "$(dirname "$target_file")" || return 1
+    touch "$target_file" || return 1
+    merged_file=$(mktemp "${target_file}.XXXXXX") || return 1
+    if cp -p "$target_file" "$merged_file" && awk '
+        function property_key(line, key) {
+            if (line !~ /^[[:space:]]*[[:alnum:]_.-]+[[:space:]]*=/) return ""
+            key = substr(line, 1, index(line, "=") - 1)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+            return key
+        }
+        { sub(/\r$/, "") }
+        FILENAME == ARGV[1] {
+            key = property_key($0)
+            if (key != "") {
+                if (!(key in props)) order[++count] = key
+                props[key] = $0
+            }
+            next
+        }
+        {
+            key = property_key($0)
+            if (key in props) {
+                if (!seen[key]++) print props[key]
+            } else print
+        }
+        END { for (i = 1; i <= count; i++) if (!seen[order[i]]) print props[order[i]] }
+    ' "$source_file" "$target_file" > "$merged_file"; then
+        mv -f "$merged_file" "$target_file" && return 0
+    fi
+    rm -f "$merged_file"
+    return 1
+}
+
+merge_mi_ext() {
+    local images_dir=$1 mi_ext_dir="$1/mi_ext"
+    local partition source_dir target_dir target_prefix config_type source_prefix config_target_prefix
+    [[ -d "$mi_ext_dir" ]] || return 0
+    blue "合并移植包 mi_ext" "Merging donor mi_ext into system, system_ext and product"
+    for partition in system system_ext product; do
+        source_dir="$mi_ext_dir/$partition"
+        [[ -d "$source_dir" ]] || continue
+        target_prefix=$partition
+        [[ "$partition" == system ]] && target_prefix=system/system
+        target_dir="$images_dir/$target_prefix"
+        mkdir -p "$target_dir" "$images_dir/config" || return 1
+        # Copy directory contents, including hidden files and symlinks, then
+        # remove the source only after its files and packing metadata are merged.
+        cp -af "$source_dir/." "$target_dir/" || return 1
+        for config_type in fs_config file_contexts; do
+            source_prefix="mi_ext/$partition"
+            config_target_prefix=$target_prefix
+            if [[ "$config_type" == file_contexts ]]; then
+                source_prefix="/$source_prefix"
+                config_target_prefix="/$target_prefix"
+            fi
+            merge_mi_ext_metadata "$images_dir/config/mi_ext_$config_type" \
+                "$images_dir/config/${partition}_$config_type" \
+                "$source_prefix" "$config_target_prefix" || return 1
+        done
+        rm -rf "$source_dir" || return 1
+    done
+    # Merge properties after the product tree so its build.prop cannot overwrite them.
+    # Keep mi_ext/etc/build.prop for the existing ROM-version detection and packing.
+    merge_mi_ext_props "$mi_ext_dir/etc/build.prop" "$images_dir/product/etc/build.prop"
+}
+
 disable_avb_verify() {
     fstab=$1
     blue "Disabling avb_verify: $fstab"

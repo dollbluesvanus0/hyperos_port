@@ -253,7 +253,7 @@ super_list=$(sed '/^#/d;/^\//d;/overlay/d;/^$/d' build/portrom/images/vendor/etc
 
 # 分解镜像
 green "开始提取逻辑分区镜像" "Starting extract portrom partition from img"
-for part in ${super_list};do
+for part in ${super_list} mi_ext;do
 # Skip already extraced parts from BASEROM
     if [[ ! -d build/portrom/images/${part} ]]; then
         if [[ ${is_eu_rom} == true ]];then
@@ -273,6 +273,12 @@ for part in ${super_list};do
     fi
 done
 rm -rf config
+
+# Flatten the donor's mi_ext overlays before reading props or applying fixes.
+merge_mi_ext "${work_dir}/build/portrom/images" || {
+    error "合并 mi_ext 失败" "Failed to merge donor mi_ext"
+    exit 1
+}
 
 blue "正在获取ROM参数" "Fetching ROM build prop."
 
