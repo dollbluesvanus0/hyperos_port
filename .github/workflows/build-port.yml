@@ -59,6 +59,7 @@ jobs:
           done
           bash tests/merge_mi_ext.sh
           bash tests/actions_support.sh
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Check Pixeldrain credentials
         if: ${{ inputs.upload_to_pixeldrain }}

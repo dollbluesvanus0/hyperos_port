@@ -15,3 +15,6 @@ remove_data_encryption=false
 
 # Packing Rom with Payload.bin/new.dat.br type or super.img
 pack_method=aosp
+
+# HyperOS 2 MiuiCamera APK (downloaded instead of bundled/stock MiuiCamera).
+miuicamera_url=https://drive.google.com/file/d/1a_I20XHYjxNOn5mudIoenHCRaqGPAb93/view?usp=drive_link

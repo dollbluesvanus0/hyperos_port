@@ -6,12 +6,16 @@ on:
       - '*.sh'
       - 'ci/**'
       - 'tests/**'
+      - 'bin/miuicamera.py'
+      - 'bin/port_config'
       - '.github/workflows/**'
   pull_request:
     paths:
       - '*.sh'
       - 'ci/**'
       - 'tests/**'
+      - 'bin/miuicamera.py'
+      - 'bin/port_config'
       - '.github/workflows/**'
   workflow_dispatch:
 
@@ -35,6 +39,7 @@ jobs:
           done
           bash tests/merge_mi_ext.sh
           bash tests/actions_support.sh
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Verify bundled Linux tools can start
         run: |
           export PATH="$PWD/bin/Linux/x86_64:$PWD/otatools/bin:$PATH"

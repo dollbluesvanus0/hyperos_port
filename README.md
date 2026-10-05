@@ -87,6 +87,8 @@ Contacts MIUIAod MiuiHome MIUISecurityCenter  Mms  MIUIContentExtension  MIUIPac
 
 ## GitHub Actions
 
+Every build downloads [MiuiCamera 6.0.001240.1](https://drive.google.com/file/d/1a_I20XHYjxNOn5mudIoenHCRaqGPAb93/view?usp=drive_link) before extracting firmware. The URL is configurable as `miuicamera_url` in `bin/port_config`. Invalid APKs and download errors stop the build. After device overlays, the downloaded APK replaces the old camera in `product/priv-app/MiuiCamera`, with stale copies and `oat` removed. Its native libraries remain inside the original APK; the required `TURN_SCREEN_ON` permission is granted in `product/etc/permissions/privapp-permissions-miuicamera.xml`.
+
 Open [Actions → Build HyperOS port](https://github.com/dollbluesvanus0/hyperos_port/actions/workflows/build-port.yml), select **Run workflow**, choose branch **test**, and start the build.
 
 **Pixeldrain upload is enabled by default.** First create a key on [Pixeldrain's API keys page](https://pixeldrain.com/user/api_keys) and add it under **Settings → Secrets and variables → Actions → New repository secret**, named **`PIXELDRAIN_API_KEY`**. The workflow checks authentication before downloading firmware. To build using GitHub artifacts alone, uncheck **Upload to Pixeldrain**.

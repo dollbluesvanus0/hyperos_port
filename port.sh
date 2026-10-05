@@ -49,7 +49,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 fi
 
 
-check unzip aria2c 7z zip java zipalign python3 zstd bc xmlstarlet
+check unzip aria2c 7z zip java zipalign python3 zstd bc xmlstarlet curl
 
 # The bundled dumper defaults to CPU count - 4, which is zero on hosted runners.
 payload_worker_args=()
@@ -172,6 +172,11 @@ mkdir -p build/baserom/images/
 
 mkdir -p build/portrom/images/
 
+# Fetch and validate the HyperOS 2 camera before unpacking large ROM images.
+miuicamera_apk="${work_dir}/build/MiuiCamera.apk"
+miuicamera_url=$(sed -n 's/^miuicamera_url=//p' bin/port_config)
+python3 bin/miuicamera.py download "$miuicamera_apk" \
+    --url "${miuicamera_url:-https://drive.google.com/file/d/1a_I20XHYjxNOn5mudIoenHCRaqGPAb93/view}" || exit 1
 
 # 提取分区
 if [[ ${baserom_type} == 'payload' ]];then
@@ -948,8 +953,6 @@ targetAnimationZIP=$(find build/portrom/images/product -type f -name "bootanimat
 cp -rf $sourceAnimationZIP $targetAnimationZIP
 
 if [[ -d "devices/common" ]];then
-    commonCamera=$(find devices/common -type f -name "MiuiCamera.apk")
-    targetCamera=$(find build/portrom/images/product -type d -name "MiuiCamera")
     targetNQNfcNci=$(find build/portrom/images/system/system build/portrom/images/product build/portrom/images/system_ext -type d -name "NQNfcNci*")
 
     
@@ -967,20 +970,6 @@ if [[ -d "devices/common" ]];then
         unzip -oq devices/common/nfc_a15.zip -d build/portrom/images/
         echo "ro.vendor.nfc.dispatch_optim=1" >> build/portrom/images/vendor/build.prop
     fi
-    if [[ $base_rom_code == "munch" ]] && [[ ${port_android_version} == "15" ]]; then
-        sourceCamera=$(find build/baserom/images/ -type f -name "MiuiCamera.apk")
-        targetCamera=$(find build/portrom/images/ -type d -name "MiuiCamera")
-        cp -rf $sourceCamera $targetCamera/
-    else
-    
-    if [[ ${base_android_version} == "13" ]] && [[ -f "${commonCamera}" ]];then
-        yellow "替换相机为10S HyperOS A13 相机，MI10可用, thanks to 酷安 @PedroZ" "Replacing a compatible MiuiCamera.apk verson 4.5.003000.2"
-        if [[ -d "${targetCamera}" ]];then
-            rm -rf $targetCamera/*
-        fi
-        cp -rf $commonCamera $targetCamera
-    fi
-    fi
     
 fi
 
@@ -990,6 +979,9 @@ if [[ -d "devices/${base_rom_code}/overlay" ]]; then
 else
     yellow "devices/${base_rom_code}/overlay 未找到" "devices/${base_rom_code}/overlay not found" 
 fi
+
+# Apply after every device overlay so an old bundled camera cannot overwrite it.
+python3 bin/miuicamera.py install "$miuicamera_apk" "${work_dir}/build/portrom/images" || exit 1
 
 for zip in $(find devices/${base_rom_code}/ -name "*.zip"); do
     if unzip -l $zip | grep -q "anykernel.sh" ;then
