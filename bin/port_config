@@ -16,7 +16,7 @@ remove_data_encryption=false
 # Packing Rom with Payload.bin/new.dat.br type or super.img
 pack_method=aosp
 
-# Diagnostic build: preserve all APK/JAR files; skip app patches/replacements/debloat.
+# Diagnostic build: skip only smali patches; keep resource edits/app replacements/debloat.
 # GitHub Actions exposes the same setting as the test_mode checkbox.
 test_mode=false
 

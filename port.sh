@@ -55,11 +55,9 @@ case "$test_mode" in
     true|false) ;;
     *) error "Invalid test_mode: expected true or false."; exit 1 ;;
 esac
-check unzip aria2c zip python3 zstd bc xmlstarlet curl
-if archive_patches_enabled; then
-    check 7z java zipalign
-else
-    yellow "测试模式: APK/JAR 保持不变" "TEST MODE: APK/JAR patches, replacements and app removal are disabled."
+check unzip aria2c 7z zip java zipalign python3 zstd bc xmlstarlet curl
+if [[ "$test_mode" == true ]]; then
+    yellow "测试模式: 跳过 smali 补丁" "TEST MODE: smali patches are disabled; all other changes remain enabled."
 fi
 
 # The bundled dumper defaults to CPU count - 4, which is zero on hosted runners.
@@ -184,14 +182,10 @@ mkdir -p build/baserom/images/
 mkdir -p build/portrom/images/
 
 # Fetch and validate the HyperOS 2 camera before unpacking large ROM images.
-# APK/JAR_STAGE: camera-download
-if archive_patches_enabled; then
 miuicamera_apk="${work_dir}/build/MiuiCamera.apk"
 miuicamera_url=$(sed -n 's/^miuicamera_url=//p' bin/port_config)
 python3 bin/miuicamera.py download "$miuicamera_apk" \
     --url "${miuicamera_url:-https://drive.google.com/file/d/1a_I20XHYjxNOn5mudIoenHCRaqGPAb93/view}" || exit 1
-fi
-# END_APK/JAR_STAGE
 
 # 提取分区
 if [[ ${baserom_type} == 'payload' ]];then
@@ -337,10 +331,6 @@ python3 bin/rom_layout.py validate build/portrom/images --base-images build/base
 super_list=$(python3 bin/rom_layout.py partitions build/portrom/images) || exit 1
 green "待打包分区: $super_list" "Partitions to pack: $super_list"
 
-if [[ "$test_mode" == true ]]; then
-    python3 bin/archive_test_mode.py capture build/portrom/images build/archive-test-baseline.json || exit 1
-fi
-
 blue "正在获取ROM参数" "Fetching ROM build prop."
 
 # 安卓版本
@@ -389,8 +379,6 @@ else
 
 fi
 
-# APK/JAR_STAGE: stock-resource-overlays
-if archive_patches_enabled; then
 baseAospFrameworkResOverlay=$(find build/baserom/images/product -type f -name "AospFrameworkResOverlay.apk")
 portAospFrameworkResOverlay=$(find build/portrom/images/product -type f -name "AospFrameworkResOverlay.apk")
 if [ -f "${baseAospFrameworkResOverlay}" ] && [ -f "${portAospFrameworkResOverlay}" ];then
@@ -441,10 +429,6 @@ if [ -f "${baseMiuiBiometricResOverlay}" ] && [ -f "${portMiuiBiometricResOverla
     cp -rf ${baseMiuiBiometricResOverlay} ${portMiuiBiometricResOverlay}
 fi
 
-fi
-
-# END_APK/JAR_STAGE
-
 # displayconfig id
 rm -rf build/portrom/images/product/etc/displayconfig/display_id*.xml
 cp -rf build/baserom/images/product/etc/displayconfig/display_id*.xml build/portrom/images/product/etc/displayconfig/
@@ -459,8 +443,6 @@ cp -rf build/baserom/images/product/etc/device_features/* build/portrom/images/p
 if [[ ${is_eu_rom} == "true" ]];then
     cp -rf build/baserom/images/product/etc/device_info.json build/portrom/images/product/etc/device_info.json
 fi
-# APK/JAR_STAGE: stock-apps-and-resource-patches
-if archive_patches_enabled; then
 baseMiSound=$(find build/baserom/images/product -type d -name "MiSound")
 portMiSound=$(find build/portrom/images/product -type d -name "MiSound")
 if [ -d "${baseMiSound}" ] && [ -d "${portMiSound}" ];then
@@ -540,10 +522,6 @@ elif [ -f "${sourceMiuiFrameworkTelephonyResOverlay}" ] && [ ! -f "${targetMiuiF
 elif [ ! -f "{$sourceMiuiFrameworkTelephonyResOverlay}" ] && [ -f "${targetMiuiFrameworkTelephonyResOverlay}" ];then
     rm -rfv $targetMiuiFrameworkTelephonyResOverlay
 fi
-
-fi
-
-# END_APK/JAR_STAGE
 
 #其他机型可能没有default.prop
 for prop_file in $(find build/portrom/images/vendor/ -name "*.prop"); do
@@ -629,10 +607,10 @@ blue "左侧挖孔灵动岛修复" "StrongToast UI fix"
     patch_smali "MiuiSystemUI.apk" "MIUIStrongToast\$2.smali" "const\/4 v9\, 0x0" "iget-object v9\, v1\, Lcom\/android\/systemui\/toast\/MIUIStrongToast;->mRLLeft:Landroid\/widget\/RelativeLayout;\\n\\tinvoke-virtual {v9}, Landroid\/widget\/RelativeLayout;->getLeft()I\\n\\tmove-result v9\\n\\tint-to-float v9,v9"
 fi
 
-# APK/JAR_STAGE: services-signature-patch
+# SMALI_STAGE: services-signature-patch
 if [[ ${is_eu_rom} == "true" ]];then
     patch_smali "miui-services.jar" "SystemServerImpl.smali" ".method public constructor <init>()V/,/.end method" ".method public constructor <init>()V\n\t.registers 1\n\tinvoke-direct {p0}, Lcom\/android\/server\/SystemServerStub;-><init>()V\n\n\treturn-void\n.end method" "regex"
-elif archive_patches_enabled; then
+elif smali_patches_enabled; then
     if [[ ! -d tmp ]];then
         mkdir -p tmp/
     fi
@@ -679,7 +657,7 @@ elif archive_patches_enabled; then
     
 fi
 
-# END_APK/JAR_STAGE
+# END_SMALI_STAGE
 
 # 主题防恢复
 if [ -f build/portrom/images/system/system/etc/init/hw/init.rc ];then
@@ -687,8 +665,6 @@ if [ -f build/portrom/images/system/system/etc/init/hw/init.rc ];then
 fi
 
 
-# APK/JAR_STAGE: stock-hotword-and-app-removal
-if archive_patches_enabled; then
 if [[ ${is_eu_rom} == true ]];then
     rm -rf build/portrom/images/product/app/Updater
     baseXGoogle=$(find build/baserom/images/product/ -type d -name "HotwordEnrollmentXGoogleHEXAGON*")
@@ -729,13 +705,6 @@ else
     rm -rf build/portrom/images/product/data-app/*
     cp -rf tmp/app/* build/portrom/images/product/data-app
     rm -rf tmp/app
-fi
-fi
-
-# END_APK/JAR_STAGE
-
-# Keep non-archive cleanup active in test builds too.
-if [[ ${is_eu_rom} != true ]];then
     rm -rf build/portrom/images/system/verity_key
     rm -rf build/portrom/images/vendor/verity_key
     rm -rf build/portrom/images/product/verity_key
@@ -745,7 +714,6 @@ if [[ ${is_eu_rom} != true ]];then
     rm -rf build/portrom/images/product/media/theme/miui_mod_icons/com.google.android.apps.nbu*
     rm -rf build/portrom/images/product/media/theme/miui_mod_icons/dynamic/com.google.android.apps.nbu*
 fi
-
 # build.prop 修改
 blue "正在修改 build.prop" "Modifying build.prop"
 #
@@ -916,8 +884,6 @@ unlock_device_feature "default rhythmic eyecare mode" "integer" "default_eyecare
 unlock_device_feature "default texture for paper eyecare" "integer" "paper_eyecare_default_texture" "0"
 
 # Unlock Celluar Sharing feature
-# APK/JAR_STAGE: framework-and-app-method-patches
-if archive_patches_enabled; then
     targetFrameworkExtRes=$(find build/portrom/images/system_ext -type f -name "framework-ext-res.apk")
 if [[ -f "${targetFrameworkExtRes}" ]] && [[ ${port_android_version} != "15" ]]; then
     mkdir tmp/  > /dev/null 2>&1 
@@ -937,6 +903,8 @@ if [[ -f "${targetFrameworkExtRes}" ]] && [[ ${port_android_version} != "15" ]];
         cp -rf tmp/$filename $targetFrameworkExtRes
 fi
 
+# SMALI_STAGE: app-method-patches
+if smali_patches_enabled; then
 targetMiLinkOS2APK=$(find build/portrom -type f -name "MiLinkOS2CN.apk")
 if [[ -f "${targetMiLinkOS2APK}" ]];then
     cp -rf $targetMiLinkOS2APK tmp/$(basename $targetMiLinkOS2APK).bak
@@ -966,9 +934,8 @@ if [[ -f "${targetSettingsAPK}" ]];then
     python3 bin/patchmethod.py $targetsmali isAiSupported -return true
     java -jar bin/apktool/APKEditor.jar b -i tmp/Settings -o $targetSettingsAPK -f > /dev/null 2>&1
 fi
-
 fi
-# END_APK/JAR_STAGE
+# END_SMALI_STAGE
 
 if [[ ${port_rom_code} == "munch_cn" ]];then
     # Add missing camera permission android.permission.TURN_SCREEN_ON
@@ -1014,8 +981,6 @@ sourceAnimationZIP=$(find build/baserom/images/product -type f -name "bootanimat
 targetAnimationZIP=$(find build/portrom/images/product -type f -name "bootanimation.zip")
 cp -rf $sourceAnimationZIP $targetAnimationZIP
 
-# APK/JAR_STAGE: nfc-replacement
-if archive_patches_enabled; then
 if [[ -d "devices/common" ]];then
     targetNQNfcNci=$(find build/portrom/images/system/system build/portrom/images/product build/portrom/images/system_ext -type d -name "NQNfcNci*")
 
@@ -1037,30 +1002,18 @@ if [[ -d "devices/common" ]];then
     
 fi
 
-fi
-
-# END_APK/JAR_STAGE
-
 #Devices/机型代码/overaly 按照镜像的目录结构，可直接替换目标。
 if [[ -d "devices/${base_rom_code}/overlay" ]]; then
-    if archive_patches_enabled; then
-        cp -rf devices/${base_rom_code}/overlay/* build/portrom/images/
-    else
-        python3 bin/archive_test_mode.py overlay "devices/${base_rom_code}/overlay" build/portrom/images || exit 1
-    fi
+    cp -rf devices/${base_rom_code}/overlay/* build/portrom/images/
 else
     yellow "devices/${base_rom_code}/overlay 未找到" "devices/${base_rom_code}/overlay not found" 
 fi
 
 # Apply after every device overlay so an old bundled camera cannot overwrite it.
-# APK/JAR_STAGE: camera-install-and-debloat
-if archive_patches_enabled; then
 python3 bin/miuicamera.py install "$miuicamera_apk" "${work_dir}/build/portrom/images" || exit 1
 
 # Run for every donor region after mi_ext, stock app replacements and overlays.
 python3 bin/debloat.py "${work_dir}/build/portrom/images" || exit 1
-fi
-# END_APK/JAR_STAGE
 
 for zip in $(find devices/${base_rom_code}/ -name "*.zip"); do
     if unzip -l $zip | grep -q "anykernel.sh" ;then
@@ -1124,10 +1077,6 @@ if [ ${remove_data_encrypt} = "true" ];then
 fi
 
 # All stock overlays, props and kernel patches have been copied at this point.
-if [[ "$test_mode" == true ]]; then
-    python3 bin/archive_test_mode.py verify build/portrom/images build/archive-test-baseline.json || exit 1
-fi
-
 if [[ "${GITHUB_ACTIONS:-}" == true && "${PORT_CI_CLEANUP:-}" == true ]];then
     rm -rf -- build/baserom/images/{system,system_ext,product,mi_ext,system_dlkm,product_dlkm}
 fi

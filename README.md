@@ -6,11 +6,11 @@
 
 </div>
 
-## Тестовый режим APK/JAR
+## Тестовый режим без smali-патчей
 
 Включите **test_mode** в GitHub Actions или установите `test_mode=true` в
-`bin/port_config`. Патчи и подмена APK/JAR, установка MiuiCamera и debloat будут
-отключены. Выходной ZIP получит суффикс `_TEST`.
+`bin/port_config`. Отключатся только smali-патчи. Ресурсные патчи, подмена приложений,
+MiuiCamera, NFC и debloat продолжат работать. Выходной ZIP получит суффикс `_TEST`.
 [Инструкция и список отключённых изменений](docs/test-mode.md).
 
 ## 简介

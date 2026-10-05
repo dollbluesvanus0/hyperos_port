@@ -86,7 +86,7 @@ check() {
 }
 
 
-archive_patches_enabled() {
+smali_patches_enabled() {
     [[ "${test_mode:-false}" != true ]]
 }
 
@@ -96,8 +96,8 @@ archive_patches_enabled() {
 # $3: Value to be replaced
 # $4: Replacement value
 patch_smali() {
-    if ! archive_patches_enabled; then
-        yellow "测试模式: 跳过 $1" "TEST MODE: skipping APK/JAR patch for $1"
+    if ! smali_patches_enabled; then
+        yellow "测试模式: 跳过 $1 smali 补丁" "TEST MODE: skipping smali patch for $1"
         return 0
     fi
     if [[ $is_eu_rom == "true" ]]; then

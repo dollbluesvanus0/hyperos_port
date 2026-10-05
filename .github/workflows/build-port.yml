@@ -27,7 +27,7 @@ on:
           - super
         default: aosp
       test_mode:
-        description: Test mode - keep APK/JAR files unchanged (skip patches, camera replacement and debloat)
+        description: Test mode - skip only smali patches (keep resources, camera, NFC and debloat)
         required: true
         type: boolean
         default: false
@@ -65,7 +65,7 @@ jobs:
           bash tests/merge_mi_ext.sh
           bash tests/actions_support.sh
           bash tests/partition_extraction.sh
-          bash tests/archive_test_mode.sh
+          bash tests/smali_test_mode.sh
           python3 -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Check Pixeldrain credentials
@@ -125,7 +125,7 @@ jobs:
           printf '### HyperOS port\n\n[Download ROM artifact](%s)\n\n' "$ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
           printf 'SHA256 checksums are included in the artifact. Retention: 7 days.\n' >> "$GITHUB_STEP_SUMMARY"
           if [[ '${{ inputs.test_mode }}' == true ]]; then
-            printf '\nTest mode: APK/JAR patches, app replacements and debloat were disabled.\n' >> "$GITHUB_STEP_SUMMARY"
+            printf '\nTest mode: only smali patches were disabled; resources, app replacements, camera, NFC and debloat remained enabled.\n' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload ROM to Pixeldrain
@@ -142,6 +142,5 @@ jobs:
           path: |
             port-build.log
             pixeldrain-links.txt
-            build/archive-test-baseline.json
           if-no-files-found: ignore
           retention-days: 7
